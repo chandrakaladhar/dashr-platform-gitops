@@ -19,8 +19,9 @@ seed_db() {
   if bao kv get "$path" >/dev/null 2>&1; then
     echo "exists, skipping: $path"
   else
-    # hex keeps passwords URL-safe for connection strings
-    openssl rand -hex 24 | bao kv put "$path" username="$2" password=- >/dev/null
+    # hex keeps passwords URL-safe for connection strings; tr drops openssl's
+    # trailing newline, which password=- would otherwise store in the value
+    openssl rand -hex 24 | tr -d '\n' | bao kv put "$path" username="$2" password=- >/dev/null
     echo "created: $path"
   fi
 }
