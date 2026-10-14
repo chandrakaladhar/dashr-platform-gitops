@@ -1,0 +1,65 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sallowedrepos
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sAllowedRepos
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            repos:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sallowedrepos
+
+        violation[{"msg": msg}] {
+          container := input_containers[_]
+          not strings.any_prefix_match(container.image, input.parameters.repos)
+          msg := sprintf("container <%v> uses image <%v>; allowed prefixes are %v", [container.name, container.image, input.parameters.repos])
+        }
+
+        input_containers[c] { c := input.review.object.spec.containers[_] }
+        input_containers[c] { c := input.review.object.spec.initContainers[_] }
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdisallowlatest
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDisallowLatest
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdisallowlatest
+
+        violation[{"msg": msg}] {
+          container := input_containers[_]
+          endswith(container.image, ":latest")
+          msg := sprintf("container <%v> uses the latest tag; deploy an explicit version", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input_containers[_]
+          not has_tag_or_digest(container.image)
+          msg := sprintf("container <%v> image <%v> has no tag or digest", [container.name, container.image])
+        }
+
+        has_tag_or_digest(img) { contains(img, "@sha256:") }
+        has_tag_or_digest(img) {
+          parts := split(img, "/")
+          contains(parts[count(parts) - 1], ":")
+        }
+
+        input_containers[c] { c := input.review.object.spec.containers[_] }
+        input_containers[c] { c := input.review.object.spec.initContainers[_] }

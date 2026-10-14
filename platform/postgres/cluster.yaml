@@ -1,0 +1,36 @@
+# Shared PostgreSQL for platform components and applications.
+# Pattern: one login role + one database per component. Passwords come from
+# basic-auth Secrets in this namespace, synced from OpenBao (kv/<component>/db)
+# by platform/secrets/database.yaml.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: platform-pg
+  namespace: database
+spec:
+  instances: ${pg_instances}
+  storage:
+    size: ${pg_storage_size}
+  postgresql:
+    parameters:
+      max_connections: "300"
+  managed:
+    roles:
+      - name: dashr_nova
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-role-dashr-nova
+      - name: temporal
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-role-temporal
+      - name: harbor
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-role-harbor
+  # Backups to SeaweedFS S3 (continuous WAL archiving + base backups).
+  # Configure with the Barman Cloud plugin or barmanObjectStore depending on
+  # your CNPG version; see README, "Backups".

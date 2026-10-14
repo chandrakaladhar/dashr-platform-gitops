@@ -1,0 +1,33 @@
+# Applies only to namespaces labelled platform.dashr/tenant=true, so platform
+# components (Istio, CNPG, Temporal...) keep pulling their upstream images.
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAllowedRepos
+metadata:
+  name: tenant-allowed-repos
+spec:
+  enforcementAction: ${gatekeeper_enforcement}
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaceSelector:
+      matchLabels:
+        platform.dashr/tenant: "true"
+  parameters:
+    repos:
+      - "${image_registry}/"
+      - "docker.io/istio/"   # injected Istio sidecar; change if you mirror Istio images
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowLatest
+metadata:
+  name: tenant-disallow-latest
+spec:
+  enforcementAction: ${gatekeeper_enforcement}
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaceSelector:
+      matchLabels:
+        platform.dashr/tenant: "true"

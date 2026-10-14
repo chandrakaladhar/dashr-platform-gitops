@@ -1,0 +1,74 @@
+# OPA as a policy decision service for applications (Gatekeeper, in
+# infrastructure/, is separate and only handles Kubernetes admission).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa
+  namespace: policy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opa
+  template:
+    metadata:
+      labels:
+        app: opa
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:1.4.2   # TODO: pin to a current release
+          args:
+            - run
+            - --server
+            - --addr=:8181                   # OPA 1.x listens on localhost by default
+            - --log-level=info
+            - /policies
+          ports:
+            - name: http
+              containerPort: 8181
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: policies
+              mountPath: /policies
+              readOnly: true
+      volumes:
+        - name: policies
+          configMap:
+            name: opa-policies
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa
+  namespace: policy
+spec:
+  selector:
+    app: opa
+  ports:
+    - name: http
+      port: 8181
+      targetPort: http

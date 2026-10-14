@@ -1,0 +1,45 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: dashr-nova
+  namespace: database
+spec:
+  cluster:
+    name: platform-pg
+  name: dashr_nova
+  owner: dashr_nova
+---
+# Temporal needs two databases; its Helm chart creates the schema inside them.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: temporal
+  namespace: database
+spec:
+  cluster:
+    name: platform-pg
+  name: temporal
+  owner: temporal
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: temporal-visibility
+  namespace: database
+spec:
+  cluster:
+    name: platform-pg
+  name: temporal_visibility
+  owner: temporal
+---
+# Provisioned ahead of Harbor so it can use the shared cluster when added.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: harbor-registry
+  namespace: database
+spec:
+  cluster:
+    name: platform-pg
+  name: registry
+  owner: harbor

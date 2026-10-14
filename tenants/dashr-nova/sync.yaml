@@ -1,0 +1,15 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: dashr-nova
+  namespace: dashr-nova
+spec:
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: dashr-nova-deploy
+  path: ./overlays/${env}
+  prune: true
+  serviceAccountName: dashr-nova-deployer
+  targetNamespace: dashr-nova

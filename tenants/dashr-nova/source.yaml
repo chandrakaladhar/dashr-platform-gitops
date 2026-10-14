@@ -1,0 +1,14 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: dashr-nova-deploy
+  namespace: dashr-nova
+spec:
+  interval: 1m
+  url: https://github.com/YOUR_ORG/dashr-nova-deploy   # TODO
+  ref:
+    branch: main
+  # Private repo: create a secret and reference it, e.g.
+  # flux create secret git dashr-nova-deploy-auth -n dashr-nova --url=... --username=... --password=<token>
+  # secretRef:
+  #   name: dashr-nova-deploy-auth

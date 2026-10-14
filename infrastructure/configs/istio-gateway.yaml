@@ -1,0 +1,21 @@
+# Shared ingress gateway. Applications attach VirtualServices to
+# istio-ingress/main-gateway for hosts under *.${domain}.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: main-gateway
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingress
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*.${domain}"
+    # Production: add an HTTPS server, for example
+    # - port: { number: 443, name: https, protocol: HTTPS }
+    #   tls: { mode: SIMPLE, credentialName: wildcard-tls }
+    #   hosts: ["*.${domain}"]

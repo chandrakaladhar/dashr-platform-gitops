@@ -1,0 +1,118 @@
+# Production: OpenBao runs outside the cluster and already holds the secrets.
+# Phase A: namespaces, token reviewer, OPA
+# Phase B: register this cluster's auth mount in OpenBao (once per cluster)
+# Phase C: secrets gate -> postgres -> temporal (and tenants, see tenants.yaml)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-namespaces
+  namespace: flux-system
+spec:
+  interval: 1h
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/namespaces
+  prune: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-openbao-reviewer
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: platform-namespaces
+  interval: 1h
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/openbao-reviewer
+  prune: true
+  # Lets the external OpenBao validate this cluster's service account tokens.
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-opa
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: platform-namespaces
+  interval: 1h
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/opa
+  prune: true
+  wait: true
+---
+# THE GATE: Ready only when every ExternalSecret has synced from OpenBao.
+# Until Phase B is done this keeps retrying, and everything depending on it waits.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-secrets
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-controllers
+    - name: platform-openbao-reviewer
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/secrets
+  prune: true
+  wait: true
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-postgres
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-controllers
+    - name: platform-secrets
+  interval: 1h
+  retryInterval: 1m
+  timeout: 15m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/postgres
+  prune: true
+  wait: true
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-temporal
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: platform-postgres
+  interval: 1h
+  retryInterval: 2m
+  timeout: 15m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/temporal
+  prune: true
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars

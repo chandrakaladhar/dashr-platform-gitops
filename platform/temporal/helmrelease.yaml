@@ -1,0 +1,69 @@
+# Temporal on the shared Postgres. The password comes from Secret temporal-db
+# (key "password"), synced from OpenBao by platform/secrets/temporal.yaml.
+# Value names follow the temporalio/helm-charts layout; check them against the
+# chart version you pin.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: temporal
+  namespace: temporal
+spec:
+  interval: 1h
+  timeout: 15m
+  releaseName: temporal
+  chart:
+    spec:
+      chart: temporal
+      version: "*"   # TODO: pin
+      sourceRef:
+        kind: HelmRepository
+        name: temporal
+        namespace: flux-system
+  values:
+    server:
+      replicaCount: 1
+      config:
+        persistence:
+          default:
+            driver: sql
+            sql:
+              driver: postgres12
+              host: ${pg_host}
+              port: 5432
+              database: temporal
+              user: temporal
+              existingSecret: temporal-db
+              maxConns: 20
+              maxIdleConns: 20
+          visibility:
+            driver: sql
+            sql:
+              driver: postgres12
+              host: ${pg_host}
+              port: 5432
+              database: temporal_visibility
+              user: temporal
+              existingSecret: temporal-db
+              maxConns: 20
+              maxIdleConns: 20
+    schema:
+      createDatabase:
+        enabled: false     # databases are provisioned by CNPG
+      setup:
+        enabled: true
+      update:
+        enabled: true
+    cassandra:
+      enabled: false
+    mysql:
+      enabled: false
+    postgresql:
+      enabled: false
+    elasticsearch:
+      enabled: false
+    prometheus:
+      enabled: false
+    grafana:
+      enabled: false
+    web:
+      enabled: true

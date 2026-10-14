@@ -1,0 +1,50 @@
+# In-cluster OpenBao for LOCAL work. Production uses an OpenBao outside the
+# cluster (see platform/openbao-reviewer and the README).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: openbao
+  namespace: openbao
+spec:
+  interval: 1h
+  releaseName: openbao
+  chart:
+    spec:
+      chart: openbao
+      version: "*"   # TODO: pin
+      sourceRef:
+        kind: HelmRepository
+        name: openbao
+        namespace: flux-system
+  # Pods stay unready until initialised and unsealed by hand (Phase B),
+  # so neither Helm nor Flux should wait for them.
+  install:
+    disableWait: true
+  upgrade:
+    disableWait: true
+  values:
+    injector:
+      enabled: false          # secrets are delivered by ESO, not the agent injector
+    ui:
+      enabled: true
+    server:
+      dataStorage:
+        enabled: true
+        size: 5Gi
+      ha:
+        enabled: true
+        replicas: 1           # one node locally; 3 or 5 for anything shared
+        raft:
+          enabled: true
+          setNodeId: true
+          config: |
+            ui = true
+            listener "tcp" {
+              tls_disable     = 1           # local only; always TLS elsewhere
+              address         = "[::]:8200"
+              cluster_address = "[::]:8201"
+            }
+            storage "raft" {
+              path = "/openbao/data"
+            }
+            service_registration "kubernetes" {}

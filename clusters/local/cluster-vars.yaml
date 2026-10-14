@@ -1,0 +1,24 @@
+# Per-cluster variables. Flux substitutes ${var} in every Kustomization that
+# references this ConfigMap via postBuild.substituteFrom. This is the one place
+# that says where things live in this cluster.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-vars
+  namespace: flux-system
+data:
+  env: local
+  domain: dashr.local
+  image_registry: registry.local/dashr            # local images are tagged with this prefix
+  gatekeeper_enforcement: warn                    # warn locally, deny in production
+  # Postgres
+  pg_instances: "1"
+  pg_storage_size: 10Gi
+  pg_pooler_host: platform-pg-pooler-rw.database.svc.cluster.local
+  pg_host: platform-pg-rw.database.svc.cluster.local
+  # Other shared services
+  temporal_address: temporal-frontend.temporal.svc.cluster.local:7233
+  opa_url: http://opa.policy.svc.cluster.local:8181
+  # Secrets manager (in-cluster for local work)
+  openbao_addr: http://openbao.openbao.svc.cluster.local:8200
+  openbao_auth_mount: kubernetes

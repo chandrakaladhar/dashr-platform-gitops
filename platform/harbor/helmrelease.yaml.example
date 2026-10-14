@@ -1,0 +1,48 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: harbor
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://helm.goharbor.io
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: harbor
+  namespace: harbor
+spec:
+  interval: 1h
+  releaseName: harbor
+  chart:
+    spec:
+      chart: harbor
+      version: "*"   # TODO: pin
+      sourceRef:
+        kind: HelmRepository
+        name: harbor
+        namespace: flux-system
+  values:
+    externalURL: https://harbor.${domain}
+    expose:
+      type: clusterIP          # publish through an Istio VirtualService
+      tls:
+        enabled: false         # TLS terminated at the Istio gateway
+    persistence:
+      imageChartStorage:
+        type: s3
+        s3:
+          region: us-east-1
+          bucket: harbor
+          regionendpoint: http://seaweedfs-s3.storage.svc:8333   # TODO: your SeaweedFS S3 service
+          existingSecret: harbor-s3-credentials
+          secure: false
+    database:
+      type: external
+      external:
+        host: ${pg_host}
+        port: "5432"
+        username: harbor
+        coreDatabase: registry
+        existingSecret: harbor-db

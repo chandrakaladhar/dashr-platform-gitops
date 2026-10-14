@@ -1,0 +1,23 @@
+# If SeaweedFS already runs in your cluster, delete this file (and its entry in
+# kustomization.yaml) and keep pointing consumers at your existing S3 endpoint.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: seaweedfs
+  namespace: flux-system
+spec:
+  interval: 1h
+  releaseName: seaweedfs
+  targetNamespace: storage
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: seaweedfs
+      version: "*"   # TODO: pin
+      sourceRef:
+        kind: HelmRepository
+        name: seaweedfs
+  # TODO: set values for your topology and enable the S3 gateway
+  # (check the chart's values.yaml for the version you pin).
+  values: {}

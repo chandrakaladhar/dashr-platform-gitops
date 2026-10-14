@@ -1,0 +1,17 @@
+# PgBouncer in front of the primary, for applications with many short-lived
+# connections (Next.js). Temporal connects to platform-pg-rw directly.
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: platform-pg-pooler-rw
+  namespace: database
+spec:
+  cluster:
+    name: platform-pg
+  instances: 1
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "500"
+      default_pool_size: "20"

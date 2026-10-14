@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-vars
+  namespace: flux-system
+data:
+  env: production
+  domain: example.edu.au                          # TODO: your domain
+  image_registry: harbor.example.internal/dashr   # TODO: your Harbor project path
+  gatekeeper_enforcement: deny
+  pg_instances: "3"
+  pg_storage_size: 100Gi
+  pg_pooler_host: platform-pg-pooler-rw.database.svc.cluster.local
+  pg_host: platform-pg-rw.database.svc.cluster.local
+  temporal_address: temporal-frontend.temporal.svc.cluster.local:7233
+  opa_url: http://opa.policy.svc.cluster.local:8181
+  # Secrets manager runs OUTSIDE this cluster in production
+  openbao_addr: https://openbao.example.internal:8200   # TODO
+  openbao_auth_mount: kubernetes-production             # one auth mount per cluster

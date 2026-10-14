@@ -1,0 +1,21 @@
+# Flux deploys dashr-nova as this service account, so the deploy repo can only
+# create resources inside the dashr-nova namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashr-nova-deployer
+  namespace: dashr-nova
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dashr-nova-deployer
+  namespace: dashr-nova
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin          # bound by a RoleBinding: admin of this namespace only
+subjects:
+  - kind: ServiceAccount
+    name: dashr-nova-deployer
+    namespace: dashr-nova

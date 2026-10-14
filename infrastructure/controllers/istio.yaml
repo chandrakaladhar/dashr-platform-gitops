@@ -1,0 +1,67 @@
+# NOTE: chart versions are "*" so the model works out of the box.
+# Pin exact versions before relying on this (README: "Pinning versions").
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-base
+  namespace: flux-system
+spec:
+  interval: 1h
+  releaseName: istio-base
+  targetNamespace: istio-system
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: base
+      version: "*"   # TODO: pin
+      sourceRef:
+        kind: HelmRepository
+        name: istio
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istiod
+  namespace: flux-system
+spec:
+  interval: 1h
+  releaseName: istiod
+  targetNamespace: istio-system
+  dependsOn:
+    - name: istio-base
+  chart:
+    spec:
+      chart: istiod
+      version: "*"   # TODO: pin, same version as istio-base
+      sourceRef:
+        kind: HelmRepository
+        name: istio
+  values:
+    pilot:
+      env:
+        # Native sidecars let Jobs (DB migrations, schema setup) complete in meshed namespaces.
+        ENABLE_NATIVE_SIDECARS: "true"
+---
+# Release name "istio-ingress" gives the gateway pods the label istio=ingress,
+# which the Gateway in infrastructure/configs selects.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-ingress
+  namespace: flux-system
+spec:
+  interval: 1h
+  releaseName: istio-ingress
+  targetNamespace: istio-ingress
+  install:
+    createNamespace: true
+  dependsOn:
+    - name: istiod
+  chart:
+    spec:
+      chart: gateway
+      version: "*"   # TODO: pin, same version as istiod
+      sourceRef:
+        kind: HelmRepository
+        name: istio

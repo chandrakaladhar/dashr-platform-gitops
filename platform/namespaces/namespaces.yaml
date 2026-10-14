@@ -1,0 +1,34 @@
+# Namespaces are created first so secrets and workloads can land in them.
+# Label conventions:
+#   platform.dashr/tenant=true           -> tenant image policies apply
+#   platform.dashr/postgres-client=true  -> allowed to reach the shared Postgres
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+  labels:
+    istio-injection: disabled     # CNPG uses its own TLS; keep DB pods out of the mesh
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: temporal
+  labels:
+    istio-injection: disabled
+    platform.dashr/postgres-client: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: policy                    # OPA server for application authorization
+  labels:
+    istio-injection: disabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dashr-nova
+  labels:
+    istio-injection: enabled
+    platform.dashr/tenant: "true"
+    platform.dashr/postgres-client: "true"

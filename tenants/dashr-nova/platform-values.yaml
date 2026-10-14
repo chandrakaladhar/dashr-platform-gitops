@@ -1,0 +1,28 @@
+# Platform-provided Helm values for the dashr-nova chart, consumed by the
+# HelmRelease in dashr-nova-deploy via spec.valuesFrom. This is where the
+# platform answers the chart's dependency contract: where each service is and
+# which Secret holds the credentials. Values set in the deploy repo's
+# spec.values override these.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashr-nova-platform-values
+  namespace: dashr-nova
+data:
+  values.yaml: |
+    database:
+      existingSecret: dashr-nova-db
+      existingSecretKey: DATABASE_URL
+    temporal:
+      enabled: true
+      address: ${temporal_address}
+      namespace: default
+    opa:
+      enabled: true
+      url: ${opa_url}
+      policyPath: dashr/authz/allow
+    istio:
+      virtualService:
+        enabled: true
+        host: dashr-nova.${domain}
+        gateway: istio-ingress/main-gateway
