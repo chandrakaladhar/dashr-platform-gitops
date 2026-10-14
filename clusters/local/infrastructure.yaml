@@ -17,6 +17,15 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: cluster-vars
+  patches:
+    # Local only: corporate proxy (Zscaler) re-signs TLS for some chart repos
+    - target:
+        kind: HelmRepository
+      patch: |
+        - op: add
+          path: /spec/certSecretRef
+          value:
+            name: corp-ca
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
