@@ -23,6 +23,12 @@ spec:
     server:
       replicaCount: 1
       config:
+        # Chart 1.x no longer creates "default"; tenants use it (platform-values.yaml)
+        namespaces:
+          create: true
+          namespace:
+            - name: default
+              retention: 3d
         persistence:
           defaultStore: default
           visibilityStore: visibility
