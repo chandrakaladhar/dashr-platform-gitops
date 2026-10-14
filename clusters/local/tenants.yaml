@@ -21,3 +21,13 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: cluster-vars
+  patches:
+    # Local only: corporate proxy (Zscaler) re-signs TLS for github.com.
+    # Secret corp-ca (key ca.crt) is created by hand in each tenant namespace.
+    - target:
+        kind: GitRepository
+      patch: |
+        - op: add
+          path: /spec/secretRef
+          value:
+            name: corp-ca
