@@ -28,6 +28,7 @@ spec:
             - --server
             - --addr=:8181                   # OPA 1.x listens on localhost by default
             - --log-level=info
+            - --ignore=.*                    # skip the ConfigMap's hidden ..data / ..<timestamp> dirs
             - /policies
           ports:
             - name: http
