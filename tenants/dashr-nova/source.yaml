@@ -5,7 +5,7 @@ metadata:
   namespace: dashr-nova
 spec:
   interval: 1m
-  url: https://github.com/YOUR_ORG/dashr-nova-deploy   # TODO
+  url: https://github.com/chandrakaladhar/dashr-nova-deploy
   ref:
     branch: main
   # Private repo: create a secret and reference it, e.g.
