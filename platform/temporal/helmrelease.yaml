@@ -1,5 +1,5 @@
 # Temporal on the shared Postgres. The password comes from Secret temporal-db
-# (key "password"), synced from OpenBao by platform/secrets/temporal.yaml.
+# (key "password"), synced by platform/secrets/base/temporal.yaml.
 # Value names follow the temporalio/helm-charts layout; check them against the
 # chart version you pin.
 apiVersion: helm.toolkit.fluxcd.io/v2

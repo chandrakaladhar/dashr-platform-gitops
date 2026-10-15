@@ -1,7 +1,7 @@
 # Shared PostgreSQL for platform components and applications.
 # Pattern: one login role + one database per component. Passwords come from
-# basic-auth Secrets in this namespace, synced from OpenBao (kv/<component>/db)
-# by platform/secrets/database.yaml.
+# basic-auth Secrets in this namespace, synced from OpenBao or AWS Secrets Manager (<component>/db)
+# by platform/secrets/base/database.yaml.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:

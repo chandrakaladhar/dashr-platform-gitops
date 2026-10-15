@@ -1,7 +1,7 @@
-# Production: OpenBao runs outside the cluster and already holds the secrets.
-# Phase A: namespaces, token reviewer, OPA
-# Phase B: register this cluster's auth mount in OpenBao (once per cluster)
-# Phase C: secrets gate -> postgres -> temporal (and tenants, see tenants.yaml)
+# Production on AWS EKS: credentials live in AWS Secrets Manager, read through
+# IRSA (see "Production on AWS EKS" in the README).
+# Before Flux: IAM roles for each namespace and the secrets exist in AWS.
+# Then: namespaces, OPA -> secrets gate -> postgres -> temporal (and tenants).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -14,22 +14,6 @@ spec:
     name: flux-system
   path: ./platform/namespaces
   prune: true
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: platform-openbao-reviewer
-  namespace: flux-system
-spec:
-  dependsOn:
-    - name: platform-namespaces
-  interval: 1h
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./platform/openbao-reviewer
-  prune: true
-  # Lets the external OpenBao validate this cluster's service account tokens.
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -48,8 +32,9 @@ spec:
   prune: true
   wait: true
 ---
-# THE GATE: Ready only when every ExternalSecret has synced from OpenBao.
-# Until Phase B is done this keeps retrying, and everything depending on it waits.
+# THE GATE: Ready only when every ExternalSecret has synced from Secrets Manager.
+# Until the IAM roles and secrets exist this keeps retrying, and everything
+# depending on it waits.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -58,14 +43,13 @@ metadata:
 spec:
   dependsOn:
     - name: infra-controllers
-    - name: platform-openbao-reviewer
   interval: 10m
   retryInterval: 1m
   timeout: 5m
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./platform/secrets
+  path: ./platform/secrets/aws
   prune: true
   wait: true
   postBuild:

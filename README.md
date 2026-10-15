@@ -8,7 +8,7 @@ live". Applications live in their own repos and are plugged in as **tenants**.
 clusters/<env>/            Flux entry point per cluster (flux bootstrap --path)
   cluster-vars.yaml        where things live in this cluster (${var} substitution)
   infrastructure.yaml      infra-controllers -> infra-configs -> infra-policies
-  platform.yaml            namespaces, OpenBao, OPA, secrets gate, postgres, temporal
+  platform.yaml            namespaces, OpenBao (local), OPA, secrets gate, postgres, temporal
   tenants.yaml             application tenants, after the platform is ready
 infrastructure/
   controllers/             Istio, CloudNativePG, Gatekeeper, External Secrets, SeaweedFS
@@ -17,14 +17,18 @@ infrastructure/
 platform/
   namespaces/              shared namespaces and their labels
   openbao/                 in-cluster OpenBao (local clusters only)
-  openbao-reviewer/        lets an external OpenBao trust this cluster (production)
-  secrets/                 SecretStores + ExternalSecrets: the secrets gate
+  secrets/                 the secrets gate:
+    base/                  ExternalSecrets (provider-neutral, store "platform")
+    stores/openbao/        SecretStores for OpenBao (local)
+    stores/aws/            SecretStores for AWS Secrets Manager via IRSA (production)
+    openbao/, aws/         what a cluster points its platform-secrets path at
   postgres/                shared CNPG cluster, roles, databases, pooler, network policy
   temporal/                Temporal on the shared Postgres
   opa/                     OPA server for application authorization decisions
   harbor/                  prepared, not enabled yet
 tenants/dashr-nova/        deploy service account, platform values, Git source, Flux sync
-scripts/                   configure-openbao.sh, seed-secrets.sh, unseal.sh
+scripts/                   configure-openbao.sh, seed-secrets.sh, unseal.sh (local)
+                           seed-secrets-aws.sh (production)
 ```
 
 ## How the pieces fit
@@ -32,14 +36,16 @@ scripts/                   configure-openbao.sh, seed-secrets.sh, unseal.sh
 | Concern | Lives in | Notes |
 |---|---|---|
 | Where a service is (hosts, ports, URLs) | `clusters/<env>/cluster-vars.yaml` | Substituted into manifests by Flux |
-| Credentials | OpenBao, `kv/<component>/db` | Never in Git |
-| Getting credentials into the cluster | `platform/secrets/` | ESO, one SecretStore and OpenBao role per namespace |
+| Credentials | `<component>/db`: OpenBao locally (`kv/` mount), AWS Secrets Manager in production | Never in Git |
+| Getting credentials into the cluster | `platform/secrets/` | ESO, one SecretStore per namespace, each with its own OpenBao role or IAM role |
 | What an app is given | `tenants/<app>/platform-values.yaml` | Read by the app's HelmRelease via `valuesFrom` |
 | What runs in each environment | the app's deploy repo | Image and chart tags, by commit |
 
 Because consumers only ever see Secret **names** and values supplied by the
 platform, moving Postgres, Temporal, OPA or OpenBao is a change to
-`cluster-vars.yaml` (and OpenBao itself), never to an application repo.
+`cluster-vars.yaml` (and the service itself), never to an application repo.
+Switching the secrets backend is a change to the cluster's `platform-secrets`
+path (`./platform/secrets/openbao` or `./platform/secrets/aws`).
 
 ## Reconciliation order and the secrets gate
 
@@ -59,7 +65,8 @@ flowchart LR
 ```
 
 `platform-secrets` is only Ready when every ExternalSecret has synced from
-OpenBao. Until OpenBao is unsealed and seeded it keeps retrying, and Postgres,
+the secrets backend. Until OpenBao is unsealed and seeded (locally), or the
+IAM roles and secrets exist in AWS (production), it keeps retrying, and Postgres,
 Temporal and the tenants wait instead of failing. This avoids Helm releases
 exhausting their retries and jobs failing for missing credentials.
 
@@ -210,40 +217,69 @@ The local cluster handles this as follows:
 Asking IT to bypass inspection for `github.com`, `ghcr.io`, `docker.io`,
 `quay.io`, `registry.istio.io` and the chart hosts removes all of this.
 
-## Production
+## Production on AWS EKS
 
-OpenBao runs **outside** the cluster (dedicated VMs with integrated Raft, a
-management cluster, or an institutional service), with TLS and auto-unseal.
-The production cluster:
+Production reads credentials from **AWS Secrets Manager**; there is no OpenBao
+in or for the production cluster. `clusters/production/platform.yaml` points
+`platform-secrets` at `./platform/secrets/aws`, which combines the shared
+ExternalSecrets with SecretStores that authenticate through **IRSA**: ESO
+requests a token for each namespace's `external-secrets-reader` service account
+and exchanges it for that namespace's IAM role. No static AWS keys.
 
-- does not include `platform/openbao`; it includes `platform/openbao-reviewer`,
-  which gives the external OpenBao a token to validate this cluster's service
-  accounts;
-- uses its own auth mount (`openbao_auth_mount: kubernetes-production`), so one
-  OpenBao can serve several clusters;
-- needs only one manual step, once per cluster:
+Fill in `aws_region`, `aws_account_id` and `eks_cluster_name` in
+`clusters/production/cluster-vars.yaml`, then do this once per cluster,
+before bootstrapping Flux (Terraform is the natural home for steps 1 and 2):
 
-```bash
-export BAO_ADDR=https://openbao.example.internal:8200 && bao login
-MODE=external AUTH_MOUNT=kubernetes-production \
-K8S_HOST=https://<api-server>:6443 ./scripts/configure-openbao.sh
-```
+1. **IAM OIDC provider** for the cluster (`eksctl utils associate-iam-oidc-provider`
+   or Terraform).
+2. **One IAM role per namespace**, named `<eks_cluster_name>-eso-<namespace>`,
+   trusting only that namespace's service account:
 
-Credentials already exist in OpenBao, so rebuilding the cluster needs no
-seeding: Flux comes up, ESO authenticates, the gate opens, everything deploys.
+   | Role | May read (`secretsmanager:GetSecretValue`, `DescribeSecret`) |
+   |---|---|
+   | `<cluster>-eso-database` | `arn:aws:secretsmanager:<region>:<account>:secret:*/db-*` (CNPG manages every role) |
+   | `<cluster>-eso-temporal` | `...:secret:temporal/*` |
+   | `<cluster>-eso-dashr-nova` | `...:secret:dashr-nova/*` |
+
+   Trust policy (shown for `dashr-nova`):
+   ```json
+   {
+     "Effect": "Allow",
+     "Principal": { "Federated": "arn:aws:iam::<account>:oidc-provider/<oidc-issuer-host-and-path>" },
+     "Action": "sts:AssumeRoleWithWebIdentity",
+     "Condition": { "StringEquals": {
+       "<oidc-issuer-host-and-path>:sub": "system:serviceaccount:dashr-nova:external-secrets-reader",
+       "<oidc-issuer-host-and-path>:aud": "sts.amazonaws.com"
+     } }
+   }
+   ```
+   If the secrets use a customer-managed KMS key, also allow `kms:Decrypt` on it.
+3. **Create the secrets** (never overwrites existing ones):
+   ```bash
+   AWS_REGION=<aws_region> ./scripts/seed-secrets-aws.sh
+   ```
+   Each secret is JSON, `{"username": "...", "password": "..."}`, named
+   `<component>/db`, the same key the OpenBao entries use, so the
+   ExternalSecrets in `platform/secrets/base/` are identical in both clusters.
+
+Credentials live in AWS, so rebuilding the cluster needs no seeding: Flux comes
+up, ESO assumes the roles, the gate opens, everything deploys. Rotation (by
+hand or Secrets Manager rotation) reaches CNPG and the apps within the
+ExternalSecrets' `refreshInterval` (1h).
 
 ## Shared PostgreSQL pattern
 
 One CloudNativePG cluster (`platform-pg` in `database`) serves every
 component, with one login role and one database per component.
 
-| Component  | Role         | Database(s)                        | OpenBao entry     | Connects via            |
+| Component  | Role         | Database(s)                        | Secret key        | Connects via            |
 |------------|--------------|------------------------------------|-------------------|-------------------------|
-| dashr-nova | `dashr_nova` | `dashr_nova`                       | `kv/dashr-nova/db`| `platform-pg-pooler-rw` |
-| Temporal   | `temporal`   | `temporal`, `temporal_visibility`  | `kv/temporal/db`  | `platform-pg-rw`        |
-| Harbor     | `harbor`     | `registry` (ready for later)       | `kv/harbor/db`    | `platform-pg-rw`        |
+| dashr-nova | `dashr_nova` | `dashr_nova`                       | `dashr-nova/db`   | `platform-pg-pooler-rw` |
+| Temporal   | `temporal`   | `temporal`, `temporal_visibility`  | `temporal/db`     | `platform-pg-rw`        |
+| Harbor     | `harbor`     | `registry` (ready for later)       | `harbor/db`       | `platform-pg-rw`        |
 
-Each credential exists once in OpenBao. ESO projects it twice: into the
+Each credential exists once in the secrets backend (OpenBao under `kv/`
+locally, AWS Secrets Manager in production). ESO projects it twice: into the
 `database` namespace for CNPG, and into the component's namespace in the shape
 the component expects. The platform provisions roles and empty databases; each
 component owns its schema (Temporal's schema jobs, dashr-nova's migrations).
@@ -253,11 +289,14 @@ component owns its schema (Temporal's schema jobs, dashr-nova's migrations).
 1. Add a role in `platform/postgres/cluster.yaml` and a `Database` in
    `platform/postgres/databases.yaml`.
 2. Label its namespace `platform.dashr/postgres-client: "true"`.
-3. Add `seed_db <component> <user>` to `scripts/seed-secrets.sh`, and the
-   component to the loop in `scripts/configure-openbao.sh`. Re-run both.
-4. In `platform/secrets/`: a `pg-role-<component>` ExternalSecret in
-   `database`, plus a SecretStore, service account and ExternalSecret in the
-   component's namespace.
+3. Add `seed_db <component> <user>` to `scripts/seed-secrets.sh` and
+   `scripts/seed-secrets-aws.sh`, and the component to the loop in
+   `scripts/configure-openbao.sh`. Re-run them; in AWS, also create the
+   `<cluster>-eso-<component>` IAM role (see "Production on AWS EKS").
+4. In `platform/secrets/base/`: a `pg-role-<component>` ExternalSecret in
+   `database` and an ExternalSecret in the component's namespace. In both
+   `stores/openbao/` and `stores/aws/`: a service account and SecretStore
+   `platform` for the component's namespace.
 
 **When to give a component its own Postgres cluster:** when its load affects
 others (Temporal is the usual first candidate), when it needs a different
@@ -322,6 +361,8 @@ waiting on a dependency is normal; find the first one that is not.
 | `sync path configuration ... would overwrite path` | Bootstrapped from elsewhere before; if the old sync never applied anything, `kubectl -n flux-system delete kustomization flux-system` and `delete gitrepository flux-system`, then bootstrap |
 | Namespace stuck `Terminating` after deleting Flux | Controllers are gone, finalizers remain; `kubectl patch <kind> <name> -n <ns> --type=merge -p '{"metadata":{"finalizers":null}}'` (safe only when nothing needs pruning) |
 | SecretStore `InvalidProviderConfig` | OpenBao sealed or not configured; run Phase B or `./scripts/unseal.sh` |
+| SecretStore not ready on EKS, `AccessDenied` / `WebIdentityErr` | IAM role missing, wrong name (`<eks_cluster_name>-eso-<namespace>`), or its trust policy names a different service account or OIDC provider |
+| ExternalSecret `SecretSyncedError`, `ResourceNotFoundException` (EKS) | Secret not created in that region/account; run `seed-secrets-aws.sh` |
 | ExternalSecret `SecretSyncedError` after unsealing | Retry backoff; force a sync (Phase C) |
 | `password authentication failed` but the role is reconciled | Trailing newline in the stored password; see Shared PostgreSQL |
 | OPA `multiple default rules ... found` | OPA loading a ConfigMap's hidden `..data` copies; keep `--ignore=.*` in its args |

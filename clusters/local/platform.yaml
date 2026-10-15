@@ -64,7 +64,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./platform/secrets
+  path: ./platform/secrets/openbao
   prune: true
   wait: true
   postBuild:
