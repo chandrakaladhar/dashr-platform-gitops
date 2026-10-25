@@ -10,6 +10,10 @@ metadata:
   namespace: dashr-nova
 data:
   values.yaml: |
+    # The cluster names its environment; the app needs it (only local and
+    # development accept development identities).
+    env:
+      APP_ENV: ${env}
     database:
       existingSecret: dashr-nova-db
       existingSecretKey: DATABASE_URL
