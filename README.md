@@ -8,7 +8,7 @@ live". Applications live in their own repos and are plugged in as **tenants**.
 clusters/<env>/            Flux entry point per cluster (flux bootstrap --path)
   cluster-vars.yaml        where things live in this cluster (${var} substitution)
   infrastructure.yaml      infra-controllers -> infra-configs -> infra-policies
-  platform.yaml            namespaces, OpenBao (local), OPA, secrets gate, postgres, temporal
+  platform.yaml            namespaces, OpenBao (local), OPA, secrets gate, postgres, temporal, keycloak
   tenants.yaml             application tenants, after the platform is ready
 infrastructure/
   controllers/             Istio, CloudNativePG, Gatekeeper, External Secrets, SeaweedFS
@@ -24,6 +24,7 @@ platform/
     openbao/, aws/         what a cluster points its platform-secrets path at
   postgres/                shared CNPG cluster, roles, databases, pooler, network policy
   temporal/                Temporal on the shared Postgres
+  keycloak/                Keycloak (OIDC identity provider) on the shared Postgres
   opa/                     OPA server for application authorization decisions
                            (policies come from each app's policy repo as OCI bundles)
   harbor/                  prepared, not enabled yet
@@ -58,6 +59,7 @@ flowchart LR
   IC --> SEC
   OB --> SEC[platform-secrets<br/>wait: all synced]
   SEC --> PG[platform-postgres] --> TP[platform-temporal]
+  PG --> KC[platform-keycloak]
   SEC --> T[tenants]
   PG --> T
   TP --> T
@@ -181,6 +183,7 @@ Everything is `ClusterIP`; reach it with a port-forward (one per terminal).
 |---|---|---|
 | dashr-nova (via Istio) | add `127.0.0.1 dashr-nova.dashr.local` to `/etc/hosts` | http://dashr-nova.dashr.local |
 | dashr-nova (direct) | `kubectl -n dashr-nova port-forward svc/dashr-nova 8080:80` | http://localhost:8080 |
+| Keycloak (via Istio) | add `127.0.0.1 keycloak.dashr.local` to `/etc/hosts` | http://keycloak.dashr.local/admin, user `admin`, password: `bao kv get -field=password kv/keycloak/admin` |
 | Temporal UI | `kubectl -n temporal port-forward svc/temporal-web 8088:8080` | http://localhost:8088, namespace `default` |
 | Temporal frontend (gRPC) | `kubectl -n temporal port-forward svc/temporal-frontend 7233:7233` | `temporal workflow list --address localhost:7233` |
 | OpenBao (CLI and UI) | `kubectl -n openbao port-forward svc/openbao 8200:8200` | http://localhost:8200/ui |
@@ -262,6 +265,7 @@ before bootstrapping Flux (Terraform is the natural home for steps 1 and 2):
    | `<cluster>-eso-database` | `arn:aws:secretsmanager:<region>:<account>:secret:*/db-*` (CNPG manages every role) |
    | `<cluster>-eso-temporal` | `...:secret:temporal/*` |
    | `<cluster>-eso-dashr-nova` | `...:secret:dashr-nova/*` |
+   | `<cluster>-eso-keycloak` | `...:secret:keycloak/*` |
 
    Trust policy (shown for `dashr-nova`):
    ```json
@@ -299,6 +303,7 @@ component, with one login role and one database per component.
 | dashr-nova | `dashr_nova` | `dashr_nova`                       | `dashr-nova/db`   | `platform-pg-pooler-rw` |
 | Temporal   | `temporal`   | `temporal`, `temporal_visibility`  | `temporal/db`     | `platform-pg-rw`        |
 | Harbor     | `harbor`     | `registry` (ready for later)       | `harbor/db`       | `platform-pg-rw`        |
+| Keycloak   | `keycloak`   | `keycloak`                         | `keycloak/db`     | `platform-pg-rw`        |
 
 Each credential exists once in the secrets backend (OpenBao under `kv/`
 locally, AWS Secrets Manager in production). ESO projects it twice: into the
@@ -334,6 +339,36 @@ path password=-` stores stdin verbatim. CNPG trims a trailing newline when it
 sets the role password, but other clients (Temporal) send it as-is and fail
 with `password authentication failed`. Pipe through `tr -d '\n'` (as
 `seed-secrets.sh` does), or use `printf '%s'` rather than `echo`.
+
+## Keycloak
+
+Keycloak runs from the upstream image (`platform/keycloak/keycloak.yaml`, no
+chart) in production mode, at `${keycloak_url}` through the Istio gateway. It
+connects to `platform-pg-rw` directly (not PgBouncer) and creates its own
+schema in the `keycloak` database on first start.
+
+- **In the mesh**, with `STRICT` mTLS and an `AuthorizationPolicy`: only the
+  ingress gateway and the `dashr-nova` namespace may call port 8080. Another
+  caller (a new tenant, Prometheus on 9000) needs a rule there first, or it
+  gets `RBAC: access denied`.
+- **Startup ordering:** the proxy is a native sidecar (started and ready before
+  Keycloak, stopped after it), with `holdApplicationUntilProxyStarts` as a
+  fallback. `platform-postgres` has `healthCheckExprs`, so it is only Ready once
+  the CNPG cluster is Ready and every `Database` is applied; `platform-keycloak`
+  waits for that, so Keycloak never starts before its database exists.
+
+- **Bootstrap admin.** `seed-secrets.sh` creates `kv/keycloak/admin`
+  (`admin` and a random password). Keycloak uses it only to create a temporary
+  admin in the `master` realm on first start. Log in, create a permanent admin
+  (or connect your organisation's IdP), then delete the temporary user.
+- **Realms and clients are not in Git yet.** Create them in the admin console
+  for now; when they settle, manage them as code (keycloak-config-cli or the
+  Keycloak Terraform provider) so a rebuilt cluster gets them back.
+- **Production:** set `keycloak_url` to the HTTPS URL, add the gateway's HTTPS
+  server, and don't expose `/admin` publicly (restrict it at the gateway or
+  serve it on a separate internal hostname with `KC_HOSTNAME_ADMIN`).
+- **Upgrading:** bump the image tag; Keycloak migrates its schema on start.
+  Read the release's upgrade notes first and take a database backup.
 
 ## Adding a tenant application
 

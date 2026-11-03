@@ -1,6 +1,6 @@
 # Phase A: namespaces, OpenBao, OPA (no secrets needed)
 # Phase B: manual, see README (init/unseal OpenBao, configure, seed)
-# Phase C: secrets gate -> postgres -> temporal (and tenants, see tenants.yaml)
+# Phase C: secrets gate -> postgres -> temporal, keycloak (and tenants, see tenants.yaml)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -94,6 +94,17 @@ spec:
   path: ./platform/postgres
   prune: true
   wait: true
+  # "wait" alone is not enough: CNPG's Cluster and Database have no kstatus
+  # conditions, so Flux would call them Ready as soon as they are applied, and
+  # consumers (Keycloak, Temporal) could start before their database exists.
+  healthCheckExprs:
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      current: "has(status.conditions) && status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: Database
+      current: "has(status.applied) && status.applied == true && status.observedGeneration == metadata.generation"
+      failed: "has(status.applied) && status.applied == false && has(status.message)"
   postBuild:
     substituteFrom:
       - kind: ConfigMap
@@ -115,6 +126,29 @@ spec:
     name: flux-system
   path: ./platform/temporal
   prune: true
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-keycloak
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: platform-namespaces   # istio-injection label must be on the namespace before the pod is created
+    - name: platform-postgres     # healthy cluster, keycloak role and database exist (healthCheckExprs)
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/keycloak
+  prune: true
+  wait: true
   postBuild:
     substituteFrom:
       - kind: ConfigMap

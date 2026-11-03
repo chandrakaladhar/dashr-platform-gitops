@@ -46,7 +46,7 @@ POLICY
 role_for database database
 
 # Each component reads only its own path.
-for component in temporal dashr-nova; do
+for component in temporal dashr-nova keycloak; do
   bao policy write "$component" - <<POLICY
 path "${KV_MOUNT}/data/${component}/*" { capabilities = ["read"] }
 POLICY

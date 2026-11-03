@@ -17,9 +17,9 @@ command -v aws >/dev/null     || { echo "error: aws CLI not found" >&2; exit 1; 
 command -v openssl >/dev/null || { echo "error: openssl not found" >&2; exit 1; }
 aws sts get-caller-identity >/dev/null || { echo "error: not logged in to AWS" >&2; exit 1; }
 
-# seed_db <component> <postgres username>
-seed_db() {
-  local name="$1/db"
+# seed <secret name> <username>: create {"username","password"} if missing
+seed() {
+  local name="$1"
   if aws secretsmanager describe-secret --region "$AWS_REGION" --secret-id "$name" >/dev/null 2>&1; then
     echo "exists, skipping: $name"
   else
@@ -31,9 +31,14 @@ seed_db() {
   fi
 }
 
+# seed_db <component> <postgres username>
+seed_db() { seed "$1/db" "$2"; }
+
 seed_db dashr-nova dashr_nova
 seed_db temporal   temporal
 seed_db harbor     harbor
+seed_db keycloak   keycloak
+seed keycloak/admin admin   # Keycloak bootstrap admin (temporary)
 
 echo "Done. Flux will unblock platform-secrets on its next retry, or run:"
 echo "  flux reconcile kustomization platform-secrets"

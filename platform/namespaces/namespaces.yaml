@@ -32,3 +32,11 @@ metadata:
     istio-injection: enabled
     platform.dashr/tenant: "true"
     platform.dashr/postgres-client: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak                  # identity provider (OIDC) for platform and tenant apps
+  labels:
+    istio-injection: enabled      # in the mesh: mTLS and AuthorizationPolicy for token/JWKS calls
+    platform.dashr/postgres-client: "true"

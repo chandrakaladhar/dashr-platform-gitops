@@ -1,0 +1,206 @@
+# Keycloak (identity provider, OIDC) on the shared Postgres.
+#
+# Plain manifests on the upstream image (quay.io/keycloak/keycloak), like OPA:
+# no third-party chart to track. Keycloak creates and migrates its own schema
+# in database "keycloak" on startup.
+#
+# Credentials (synced by platform/secrets/base/keycloak.yaml):
+#   keycloak-db     database role, same OpenBao/AWS entry CNPG uses
+#   keycloak-admin  temporary bootstrap admin; create a real admin, then delete it
+#
+# Public URL: ${keycloak_url} (cluster-vars), served through the Istio gateway.
+# Connects to platform-pg-rw directly, not PgBouncer: Keycloak's JDBC pool and
+# Hibernate rely on session state that transaction pooling breaks.
+#
+# In the Istio mesh (namespace label). Startup and shutdown ordering:
+#   - Istio injects the proxy as a native sidecar: Kubernetes starts it and
+#     waits for it to be ready before Keycloak starts, and stops it after
+#     Keycloak exits. holdApplicationUntilProxyStarts keeps that guarantee if
+#     native sidecars are ever turned off.
+#   - Postgres readiness: platform-keycloak depends on platform-postgres, whose
+#     health checks wait until the keycloak Database (and its owner role) exist.
+#   - Secrets: platform-postgres depends on the secrets gate, so keycloak-db and
+#     keycloak-admin exist before this pod is created.
+# JGroups clustering ports (7800, and 57800 for failure detection) bypass the
+# proxy; Keycloak encrypts that traffic itself (mTLS on by default in 26.x).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  replicas: 1   # more than one: Keycloak 26 discovers peers through the DB (jdbc-ping), no extra Service needed
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+        sidecar.istio.io/inject: "true"
+      annotations:
+        proxy.istio.io/config: |
+          holdApplicationUntilProxyStarts: true
+        traffic.sidecar.istio.io/excludeInboundPorts: "7800,57800"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "7800,57800"
+    spec:
+      serviceAccountName: keycloak   # its own mesh identity (spiffe://cluster.local/ns/keycloak/sa/keycloak)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.8.1
+          args:
+            - start   # production mode; builds its config on first start (about a minute)
+          env:
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://${pg_host}:5432/keycloak?sslmode=require
+            - name: KC_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db
+                  key: username
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db
+                  key: password
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            # Behind the Istio gateway: TLS ends there, Keycloak serves plain HTTP
+            # and builds its URLs from KC_HOSTNAME and X-Forwarded-* headers.
+            - name: KC_HOSTNAME
+              value: ${keycloak_url}
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management   # health and metrics; not routed through the gateway
+              containerPort: 9000
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+            periodSeconds: 10
+            failureThreshold: 30   # up to 5 minutes for the first build and schema migration
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  selector:
+    app: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: http-management
+      port: 9000
+      targetPort: management
+---
+# keycloak.${domain} through the shared gateway. Only port 8080 is routed;
+# health and metrics (9000) stay cluster-internal.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  hosts:
+    - keycloak.${domain}
+  gateways:
+    - istio-ingress/main-gateway
+  http:
+    - route:
+        - destination:
+            host: keycloak.keycloak.svc.cluster.local
+            port:
+              number: 8080
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keycloak
+  namespace: keycloak
+---
+# Mesh traffic into this namespace must be mTLS. Kubelet probes are unaffected
+# (Istio rewrites them to the proxy's agent), as are the JGroups ports
+# excluded above.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: keycloak
+spec:
+  mtls:
+    mode: STRICT
+---
+# Who may call Keycloak (port 8080): the ingress gateway (browsers, admin
+# console) and dashr-nova (token exchange, JWKS). Anything else is denied,
+# including port 9000 (health/metrics): add a rule here when Prometheus or
+# another tenant needs it.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  selector:
+    matchLabels:
+      app: keycloak
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-ingress/sa/istio-ingress
+        - source:
+            namespaces:
+              - dashr-nova
+      to:
+        - operation:
+            ports: ["8080"]
