@@ -325,6 +325,16 @@ chart) in production mode, at `${keycloak_url}` through the Istio gateway. It
 connects to `platform-pg-rw` directly (not PgBouncer) and creates its own
 schema in the `keycloak` database on first start.
 
+- **In the mesh**, with `STRICT` mTLS and an `AuthorizationPolicy`: only the
+  ingress gateway and the `dashr-nova` namespace may call port 8080. Another
+  caller (a new tenant, Prometheus on 9000) needs a rule there first, or it
+  gets `RBAC: access denied`.
+- **Startup ordering:** the proxy is a native sidecar (started and ready before
+  Keycloak, stopped after it), with `holdApplicationUntilProxyStarts` as a
+  fallback. `platform-postgres` has `healthCheckExprs`, so it is only Ready once
+  the CNPG cluster is Ready and every `Database` is applied; `platform-keycloak`
+  waits for that, so Keycloak never starts before its database exists.
+
 - **Bootstrap admin.** `seed-secrets.sh` creates `kv/keycloak/admin`
   (`admin` and a random password). Keycloak uses it only to create a temporary
   admin in the `master` realm on first start. Log in, create a permanent admin
@@ -402,7 +412,7 @@ waiting on a dependency is normal; find the first one that is not.
 - OPA loads policies from a ConfigMap mounted at `/policies`. Kubernetes adds
   hidden `..data` and `..<timestamp>` directories to that mount, so OPA runs
   with `--ignore=.*` to load each policy once.
-- `database`, `temporal`, `policy`, `openbao` and `keycloak` are outside the mesh. Access
+- `database`, `temporal`, `policy` and `openbao` are outside the mesh. Access
   to Postgres and OpenBao is restricted by NetworkPolicies, which only take
   effect if your CNI enforces them.
 - Kubernetes Secrets still exist in etcd once synced: enable encryption at rest
