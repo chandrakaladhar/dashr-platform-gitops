@@ -43,3 +43,15 @@ spec:
     name: platform-pg
   name: registry
   owner: harbor
+---
+# Keycloak creates and migrates its own tables on startup.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: keycloak
+  namespace: database
+spec:
+  cluster:
+    name: platform-pg
+  name: keycloak
+  owner: keycloak

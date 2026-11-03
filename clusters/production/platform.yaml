@@ -1,7 +1,7 @@
 # Production on AWS EKS: credentials live in AWS Secrets Manager, read through
 # IRSA (see "Production on AWS EKS" in the README).
 # Before Flux: IAM roles for each namespace and the secrets exist in AWS.
-# Then: namespaces, OPA -> secrets gate -> postgres -> temporal (and tenants).
+# Then: namespaces, OPA -> secrets gate -> postgres -> temporal, keycloak (and tenants).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -96,6 +96,28 @@ spec:
     name: flux-system
   path: ./platform/temporal
   prune: true
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-keycloak
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: platform-postgres
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/keycloak
+  prune: true
+  wait: true
   postBuild:
     substituteFrom:
       - kind: ConfigMap

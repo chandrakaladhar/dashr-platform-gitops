@@ -19,6 +19,7 @@ data:
   # Other shared services
   temporal_address: temporal-frontend.temporal.svc.cluster.local:7233
   opa_url: http://opa.policy.svc.cluster.local:8181
+  keycloak_url: http://keycloak.dashr.local         # public URL (issuer base); HTTP locally
   # Secrets manager (in-cluster for local work)
   openbao_addr: http://openbao.openbao.svc.cluster.local:8200
   openbao_auth_mount: kubernetes
