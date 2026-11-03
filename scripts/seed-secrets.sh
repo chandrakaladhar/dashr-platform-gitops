@@ -29,6 +29,15 @@ seed_db() {
 seed_db dashr-nova dashr_nova
 seed_db temporal   temporal
 seed_db harbor     harbor
+seed_db keycloak   keycloak
+
+# Keycloak's bootstrap admin (temporary; replace with a real admin after first login)
+if bao kv get "${KV_MOUNT}/keycloak/admin" >/dev/null 2>&1; then
+  echo "exists, skipping: ${KV_MOUNT}/keycloak/admin"
+else
+  openssl rand -hex 24 | tr -d '\n' | bao kv put "${KV_MOUNT}/keycloak/admin" username=admin password=- >/dev/null
+  echo "created: ${KV_MOUNT}/keycloak/admin"
+fi
 
 echo "Done. Flux will unblock platform-secrets on its next retry, or run:"
 echo "  flux reconcile kustomization platform-secrets"
