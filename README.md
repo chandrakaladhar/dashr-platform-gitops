@@ -26,6 +26,7 @@ platform/
   temporal/                Temporal on the shared Postgres
   keycloak/                Keycloak (OIDC identity provider) on the shared Postgres
   opa/                     OPA server for application authorization decisions
+                           (policies come from each app's policy repo as OCI bundles)
   harbor/                  prepared, not enabled yet
 tenants/dashr-nova/        deploy service account, platform values, Git source, Flux sync
 scripts/                   configure-openbao.sh, seed-secrets.sh, unseal.sh (local)
@@ -71,6 +72,27 @@ the secrets backend. Until OpenBao is unsealed and seeded (locally), or the
 IAM roles and secrets exist in AWS (production), it keeps retrying, and Postgres,
 Temporal and the tenants wait instead of failing. This avoids Helm releases
 exhausting their retries and jobs failing for missing credentials.
+
+## Local cluster for developers
+
+Developers don't run `flux bootstrap`: it writes to this repo and adds a deploy
+key per run. Instead, with read access to the repos:
+
+```bash
+./scripts/local-up.sh                          # Docker Desktop, follows main
+BRANCH=my-feature ./scripts/local-up.sh        # test your pushed branch in isolation
+CLUSTER=kind ./scripts/local-up.sh             # kind cluster "dashr"
+GITHUB_TOKEN=<read-only PAT> ./scripts/local-up.sh   # while the repos are private
+```
+
+It installs the Flux controllers from `clusters/local/flux-system/gotk-components.yaml`,
+creates the `corp-ca` and Git secrets (proxy CA detected automatically), syncs
+`clusters/local` from your branch (skipping the bootstrap-only `flux-system/`
+folder), builds the app image, then initialises, unseals, configures and seeds
+OpenBao (Phases B and C below). Re-run it after any restart. Settings are listed
+at the top of the script.
+
+The manual steps below are what the script automates, and what a shared cluster uses.
 
 ## Bootstrap a local cluster
 
@@ -400,7 +422,7 @@ waiting on a dependency is normal; find the first one that is not.
 | ExternalSecret `SecretSyncedError`, `ResourceNotFoundException` (EKS) | Secret not created in that region/account; run `seed-secrets-aws.sh` |
 | ExternalSecret `SecretSyncedError` after unsealing | Retry backoff; force a sync (Phase C) |
 | `password authentication failed` but the role is reconciled | Trailing newline in the stored password; see Shared PostgreSQL |
-| OPA `multiple default rules ... found` | OPA loading a ConfigMap's hidden `..data` copies; keep `--ignore=.*` in its args |
+| OPA pod `0/1` ready, no decisions | A bundle has not activated yet: `kubectl -n policy logs deploy/opa`. `unauthorized`/`denied`: the GHCR package is private; `x509`: `corp-ca` is missing in `policy` (re-run `local-up.sh`); `not found`: the tag in `cluster-vars.yaml` was never published |
 | Startup race: schema job fails before the role password is set | Delete the job's pod once `pg-role-*` Secrets have synced; it is retried |
 | Gatekeeper webhook `connection refused` while installing | Gatekeeper pods are not up yet; retry the failing release once they are |
 
@@ -409,9 +431,23 @@ waiting on a dependency is normal; find the first one that is not.
 - Gatekeeper constraints only apply to tenant namespaces: images must come
   from `${image_registry}/` (plus the Istio sidecar) and must not be `:latest`
   or untagged. Locally they `warn`; in production they `deny`.
-- OPA loads policies from a ConfigMap mounted at `/policies`. Kubernetes adds
-  hidden `..data` and `..<timestamp>` directories to that mount, so OPA runs
-  with `--ignore=.*` to load each policy once.
+- OPA policies live outside this repo. Each application publishes an OPA
+  bundle from its own policy repo (dashr-nova: `dashr-nova-policies`, roots
+  `dashr`) to GHCR, and `platform/opa/opa.yaml` lists the bundles. The
+  reference per cluster is in `cluster-vars.yaml`: local follows `:main`,
+  production pins a released version, so promoting a policy is a one-line
+  change there. OPA polls every 30-60s and activates new bundle versions
+  without restarting; it is not Ready until every bundle has loaded once
+  (`/health?bundles`), and keeps the last good bundle if a download fails.
+  `curl localhost:8181/v1/status` (after a port-forward) shows the active
+  revision of each bundle, and the pod log has one line per decision.
+- To onboard another application's policies: publish its bundle with roots
+  that don't overlap existing ones (OPA refuses overlapping roots), add a
+  `bundles:` entry in `platform/opa/opa.yaml` and its reference to each
+  `cluster-vars.yaml`.
+- The bundle packages must be readable by the cluster: make the GHCR package
+  public, or add `credentials` to the `registry` service in OPA's config,
+  backed by a Secret.
 - `database`, `temporal`, `policy` and `openbao` are outside the mesh. Access
   to Postgres and OpenBao is restricted by NetworkPolicies, which only take
   effect if your CNI enforces them.

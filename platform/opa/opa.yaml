@@ -1,5 +1,36 @@
 # OPA as a policy decision service for applications (Gatekeeper, in
 # infrastructure/, is separate and only handles Kubernetes admission).
+#
+# Policies are not stored here. Each application publishes an OPA bundle from
+# its own policy repo to an OCI registry; OPA polls for new versions and
+# activates them without a restart. Which bundle each cluster runs is set in
+# clusters/<env>/cluster-vars.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-config
+  namespace: policy
+data:
+  config.yaml: |
+    services:
+      registry:
+        url: ${opa_bundle_registry}
+        type: oci
+    bundles:
+      # dashr-nova-policies, roots: dashr
+      dashr-nova:
+        service: registry
+        resource: ${opa_bundle_dashr_nova}
+        polling:
+          min_delay_seconds: 30
+          max_delay_seconds: 60
+    # Which bundle revision is active, at /v1/status and in the pod log
+    status:
+      console: true
+    # One log line per decision, with its input and the bundle revision
+    decision_logs:
+      console: true
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,6 +45,9 @@ spec:
     metadata:
       labels:
         app: opa
+      annotations:
+        # OPA reads its config once; changing a bundle reference rolls the pods
+        dashr.local/bundles: "${opa_bundle_registry} ${opa_bundle_dashr_nova}"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -22,20 +56,25 @@ spec:
           type: RuntimeDefault
       containers:
         - name: opa
-          image: openpolicyagent/opa:1.4.2   # TODO: pin to a current release
+          image: openpolicyagent/opa:1.4.2   # TODO: pin to a current release (and OPA_VERSION in policy repo CI)
           args:
             - run
             - --server
             - --addr=:8181                   # OPA 1.x listens on localhost by default
             - --log-level=info
-            - --ignore=.*                    # skip the ConfigMap's hidden ..data / ..<timestamp> dirs
-            - /policies
+            - --config-file=/config/config.yaml
+          env:
+            # Extra CA certificates, added to the system roots. Locally this is
+            # the TLS-inspecting proxy CA (Secret corp-ca, from local-up.sh);
+            # elsewhere the Secret is absent and the directory is empty.
+            - name: SSL_CERT_DIR
+              value: /etc/ssl/certs:/etc/corp-ca
           ports:
             - name: http
               containerPort: 8181
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health?bundles          # not ready until every bundle has been activated once
               port: http
           livenessProbe:
             httpGet:
@@ -53,13 +92,24 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            - name: policies
-              mountPath: /policies
+            - name: config
+              mountPath: /config
               readOnly: true
+            - name: corp-ca
+              mountPath: /etc/corp-ca
+              readOnly: true
+            - name: tmp                      # OCI downloads are staged here
+              mountPath: /tmp
       volumes:
-        - name: policies
+        - name: config
           configMap:
-            name: opa-policies
+            name: opa-config
+        - name: corp-ca
+          secret:
+            secretName: corp-ca
+            optional: true
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

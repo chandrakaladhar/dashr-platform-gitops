@@ -19,6 +19,9 @@ data:
   # Other shared services
   temporal_address: temporal-frontend.temporal.svc.cluster.local:7233
   opa_url: http://opa.policy.svc.cluster.local:8181
+  # OPA policy bundles (OCI), one per application policy repo
+  opa_bundle_registry: https://ghcr.io
+  opa_bundle_dashr_nova: ghcr.io/chandrakaladhar/dashr-nova-policies:main  # follows main of dashr-nova-policies
   keycloak_url: http://keycloak.dashr.local         # public URL (issuer base); HTTP locally
   # Secrets manager (in-cluster for local work)
   openbao_addr: http://openbao.openbao.svc.cluster.local:8200
