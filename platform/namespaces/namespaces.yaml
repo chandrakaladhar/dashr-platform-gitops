@@ -38,5 +38,5 @@ kind: Namespace
 metadata:
   name: keycloak                  # identity provider (OIDC) for platform and tenant apps
   labels:
-    istio-injection: disabled     # reached through the ingress gateway; outside the mesh like temporal
+    istio-injection: enabled      # in the mesh: mTLS and AuthorizationPolicy for token/JWKS calls
     platform.dashr/postgres-client: "true"
