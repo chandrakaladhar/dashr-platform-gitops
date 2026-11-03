@@ -14,6 +14,9 @@ data:
   pg_host: platform-pg-rw.database.svc.cluster.local
   temporal_address: temporal-frontend.temporal.svc.cluster.local:7233
   opa_url: http://opa.policy.svc.cluster.local:8181
+  # OPA policy bundles (OCI), one per application policy repo
+  opa_bundle_registry: https://ghcr.io
+  opa_bundle_dashr_nova: ghcr.io/chandrakaladhar/dashr-nova-policies:0.1.0  # a released tag (v0.1.0); bump to promote
   # Secrets: AWS Secrets Manager via IRSA (platform/secrets/aws)
   aws_region: ap-southeast-2                      # TODO: your region
   aws_account_id: "123456789012"                  # TODO: your account

@@ -46,6 +46,10 @@ spec:
   path: ./platform/opa
   prune: true
   wait: true
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
 ---
 # THE GATE: Ready only when every ExternalSecret has synced from OpenBao.
 # Until Phase B is done this keeps retrying, and everything depending on it waits.
