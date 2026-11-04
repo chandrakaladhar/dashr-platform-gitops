@@ -22,7 +22,9 @@ data:
   # OPA policy bundles (OCI), one per application policy repo
   opa_bundle_registry: https://ghcr.io
   opa_bundle_dashr_nova: ghcr.io/chandrakaladhar/dashr-nova-policies:main  # follows main of dashr-nova-policies
-  keycloak_url: http://keycloak.dashr.local         # public URL (issuer base); HTTP locally
+  keycloak_url: http://localhost:8080               # public URL (issuer base). localhost, not keycloak.<domain>:
+                                                    # Google only accepts plain-HTTP redirect URIs on localhost.
+                                                    # Served on gateway port 8080 (patches in infrastructure.yaml, platform.yaml)
   # Secrets manager (in-cluster for local work)
   openbao_addr: http://openbao.openbao.svc.cluster.local:8200
   openbao_auth_mount: kubernetes
