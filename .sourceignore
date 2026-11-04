@@ -1,0 +1,4 @@
+# Added to Flux's default exclusions, which leave out images (*.png, *.jpg,
+# ...) among others. The Keycloak login theme needs its logo, so re-include
+# the theme folder whole.
+!platform/keycloak/themes/**
