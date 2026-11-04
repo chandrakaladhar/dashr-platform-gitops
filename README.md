@@ -183,7 +183,7 @@ Everything is `ClusterIP`; reach it with a port-forward (one per terminal).
 |---|---|---|
 | dashr-nova (via Istio) | add `127.0.0.1 dashr-nova.dashr.local` to `/etc/hosts` | http://dashr-nova.dashr.local |
 | dashr-nova (direct) | `kubectl -n dashr-nova port-forward svc/dashr-nova 8080:80` | http://localhost:8080 |
-| Keycloak (via Istio) | add `127.0.0.1 keycloak.dashr.local` to `/etc/hosts` | http://keycloak.dashr.local/admin, user `admin`, password: `bao kv get -field=password kv/keycloak/admin` |
+| Keycloak (via Istio, port 8080) | nothing: Docker Desktop publishes the gateway's port 8080 on localhost | http://localhost:8080/admin, user `admin`, password: `bao kv get -field=password kv/keycloak/admin` |
 | Temporal UI | `kubectl -n temporal port-forward svc/temporal-web 8088:8080` | http://localhost:8088, namespace `default` |
 | Temporal frontend (gRPC) | `kubectl -n temporal port-forward svc/temporal-frontend 7233:7233` | `temporal workflow list --address localhost:7233` |
 | OpenBao (CLI and UI) | `kubectl -n openbao port-forward svc/openbao 8200:8200` | http://localhost:8200/ui |
@@ -377,6 +377,16 @@ schema in the `keycloak` database on first start.
   `http://keycloak.keycloak.svc.cluster.local:8080/realms/<realm>/.well-known/openid-configuration`
   gets token, JWKS and userinfo endpoints on that internal host. The issuer
   stays `${keycloak_url}`.
+- **Surviving a cluster wipe.** Realms and clients live in Keycloak's database,
+  and the local Postgres volume is deleted with the cluster. Before wiping, run
+  `./scripts/backup-db.sh`: it dumps `keycloak` and `dashr_nova` to
+  `~/.config/dashr/backups/<context>/<timestamp>/` (mode 600: the Keycloak dump
+  holds client secrets and signing keys). After `local-up.sh`, run
+  `./scripts/restore-db.sh`: it stops Keycloak (suspending Flux), restores each
+  database in one transaction, and starts Keycloak again. Passwords aren't in
+  the dumps: the new cluster's OpenBao generates new ones and CNPG applies
+  them. The Keycloak admin login is the one from the backup, not the new
+  bootstrap admin. `DATABASES="... temporal"` adds others.
 - **Production:** set `keycloak_url` to the HTTPS URL, add the gateway's HTTPS
   server, and don't expose `/admin` publicly (restrict it at the gateway or
   serve it on a separate internal hostname with `KC_HOSTNAME_ADMIN`).

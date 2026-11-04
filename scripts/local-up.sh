@@ -299,9 +299,14 @@ flux --context "$CTX" get kustomizations -A
 cat <<EOF
 
 Local cluster is up, following $BRANCH.
-  App:       kubectl --context $CTX -n dashr-nova port-forward svc/dashr-nova 8080:80  -> http://localhost:8080
+  App:       http://dashr-nova.dashr.local (via the gateway; needs 127.0.0.1 dashr-nova.dashr.local in /etc/hosts)
+  Keycloak:  http://localhost:8080/admin  (user admin; password: bao kv get -field=password kv/keycloak/admin)
   Status:    flux --context $CTX get kustomizations -A
   New build: bump image.tag in dashr-nova-deploy/overlays/local/helmrelease-patch.yaml, push, re-run
   OpenBao:   unseal key and root token in $INIT_FILE
 After a Docker Desktop or node restart, re-run this script (it unseals OpenBao).
+Before wiping the cluster: ./scripts/backup-db.sh (Keycloak realms, app data).
 EOF
+if [ -e "$STATE_DIR/backups/$CTX/latest" ]; then
+  echo "A database backup exists ($(readlink "$STATE_DIR/backups/$CTX/latest")). To bring it back: ./scripts/restore-db.sh"
+fi
