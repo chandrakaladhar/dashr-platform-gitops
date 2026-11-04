@@ -132,6 +132,24 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            # The Research Services login theme (kustomization.yaml). Choose it
+            # per realm: Realm settings -> Themes -> Login theme.
+            - name: theme-research-services
+              mountPath: /opt/keycloak/themes/research-services
+              readOnly: true
+      volumes:
+        - name: theme-research-services
+          configMap:
+            name: keycloak-theme-research-services
+            items:
+              - { key: theme.properties, path: login/theme.properties }
+              - { key: login.ftl, path: login/login.ftl }
+              - { key: messages_en.properties, path: login/messages/messages_en.properties }
+              - { key: research-services.css, path: login/resources/css/research-services.css }
+              - { key: logo.png, path: login/resources/img/logo.png }
+              - { key: bricolage-grotesque-latin.woff2, path: login/resources/fonts/bricolage-grotesque-latin.woff2 }
+              - { key: OFL.txt, path: login/resources/fonts/OFL.txt }
 ---
 apiVersion: v1
 kind: Service
