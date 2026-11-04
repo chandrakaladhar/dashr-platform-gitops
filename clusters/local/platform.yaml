@@ -153,3 +153,23 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: cluster-vars
+  patches:
+    # Local only: Keycloak at http://localhost:8080 (keycloak_url). Any host
+    # on gateway port 8080 goes to Keycloak; nothing else answers on 8080.
+    # keycloak.<domain> on port 80 is no longer routed.
+    - target:
+        kind: VirtualService
+        name: keycloak
+      patch: |
+        - op: replace
+          path: /spec/hosts
+          value: ["*"]
+        - op: replace
+          path: /spec/http
+          value:
+            - match:
+                - port: 8080
+              route:
+                - destination:
+                    host: keycloak.keycloak.svc.cluster.local
+                    port: { number: 8080 }

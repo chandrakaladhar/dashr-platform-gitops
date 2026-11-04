@@ -364,6 +364,19 @@ schema in the `keycloak` database on first start.
 - **Realms and clients are not in Git yet.** Create them in the admin console
   for now; when they settle, manage them as code (keycloak-config-cli or the
   Keycloak Terraform provider) so a rebuilt cluster gets them back.
+- **Locally, Keycloak is at `http://localhost:8080`**, not `keycloak.dashr.local`:
+  Google (like most social identity providers) only accepts plain-HTTP
+  redirect URIs on `localhost`. Three local-only patches in `clusters/local/`
+  serve it there: an extra port on the ingress gateway Service
+  (`infrastructure.yaml`, `infra-controllers`), a listener on that port on
+  `main-gateway` (`infra-configs`; Istio rejects `localhost` as a Gateway host,
+  so it accepts any host), and the Keycloak VirtualService matching port 8080
+  (`platform.yaml`). The admin console is at `http://localhost:8080/admin`.
+  Pods don't use that URL: with `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, a tenant
+  that reads discovery from
+  `http://keycloak.keycloak.svc.cluster.local:8080/realms/<realm>/.well-known/openid-configuration`
+  gets token, JWKS and userinfo endpoints on that internal host. The issuer
+  stays `${keycloak_url}`.
 - **Production:** set `keycloak_url` to the HTTPS URL, add the gateway's HTTPS
   server, and don't expose `/admin` publicly (restrict it at the gateway or
   serve it on a separate internal hostname with `KC_HOSTNAME_ADMIN`).

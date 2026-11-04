@@ -26,6 +26,22 @@ spec:
           path: /spec/certSecretRef
           value:
             name: corp-ca
+    # Local only: Keycloak on localhost:8080 (keycloak_url in cluster-vars).
+    # Docker Desktop publishes LoadBalancer ports on localhost. Setting
+    # service.ports replaces the chart's list, so its three defaults are kept.
+    - target:
+        kind: HelmRelease
+        name: istio-ingress
+      patch: |
+        - op: add
+          path: /spec/values
+          value:
+            service:
+              ports:
+                - { name: status-port, port: 15021, targetPort: 15021, protocol: TCP }
+                - { name: http2, port: 80, targetPort: 80, protocol: TCP }
+                - { name: https, port: 443, targetPort: 443, protocol: TCP }
+                - { name: http-keycloak, port: 8080, targetPort: 8080, protocol: TCP }
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -48,6 +64,20 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: cluster-vars
+  patches:
+    # Local only: a listener on 8080 for Keycloak at http://localhost:8080.
+    # Istio rejects "localhost" as a Gateway host (not an FQDN), so this
+    # server accepts any host; the Keycloak VirtualService is the only route
+    # on port 8080 (it matches on the port).
+    - target:
+        kind: Gateway
+        name: main-gateway
+      patch: |
+        - op: add
+          path: /spec/servers/-
+          value:
+            port: { number: 8080, name: http-keycloak, protocol: HTTP }
+            hosts: ["*"]
 ---
 # Constraints need the CRDs that Gatekeeper creates from the templates in
 # infra-configs, so they are applied in a separate, later step.

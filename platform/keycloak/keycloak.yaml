@@ -86,6 +86,13 @@ spec:
             # and builds its URLs from KC_HOSTNAME and X-Forwarded-* headers.
             - name: KC_HOSTNAME
               value: ${keycloak_url}
+            # Browsers use KC_HOSTNAME. Pods (dashr-nova's token exchange, JWKS)
+            # call keycloak.keycloak.svc.cluster.local:8080 and get back-channel
+            # endpoints on that host, which matters locally, where KC_HOSTNAME
+            # is localhost and means the pod itself. The issuer is KC_HOSTNAME
+            # either way.
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
             - name: KC_HTTP_ENABLED
               value: "true"
             - name: KC_PROXY_HEADERS
