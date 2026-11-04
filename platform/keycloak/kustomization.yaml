@@ -2,3 +2,23 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - keycloak.yaml
+# The Research Services login theme (themes/research-services/README.md),
+# mounted into Keycloak at /opt/keycloak/themes/research-services. The name
+# gets a hash of the contents, so changing a file restarts Keycloak, which
+# caches themes in production mode.
+configMapGenerator:
+  - name: keycloak-theme-research-services
+    namespace: keycloak
+    files:
+      - theme.properties=themes/research-services/login/theme.properties
+      - login.ftl=themes/research-services/login/login.ftl
+      - messages_en.properties=themes/research-services/login/messages/messages_en.properties
+      - research-services.css=themes/research-services/login/resources/css/research-services.css
+      - logo.png=themes/research-services/login/resources/img/logo.png
+      - bricolage-grotesque-latin.woff2=themes/research-services/login/resources/fonts/bricolage-grotesque-latin.woff2
+      - OFL.txt=themes/research-services/login/resources/fonts/OFL.txt
+    options:
+      annotations:
+        # FreeMarker templates use ${...} too: Flux must not substitute
+        # cluster-vars into them.
+        kustomize.toolkit.fluxcd.io/substitute: disabled
