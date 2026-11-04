@@ -169,6 +169,14 @@ spec:
           value:
             - match:
                 - port: 8080
+              # Istio forwards X-Forwarded-Proto without a port, so Keycloak
+              # assumed port 80 for its back-channel URLs (token endpoint
+              # http://localhost/...). Set, not appended: overrides any value
+              # a client sends.
+              headers:
+                request:
+                  set:
+                    X-Forwarded-Port: "8080"
               route:
                 - destination:
                     host: keycloak.keycloak.svc.cluster.local
