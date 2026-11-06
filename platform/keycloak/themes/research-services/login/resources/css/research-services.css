@@ -1,12 +1,14 @@
 /*
-  The portal's look on Keycloak's login pages. Colours are the portal's
-  tokens (base-next-js brand/theme.css), in light and dark mode; keep them in
-  step. Dark mode follows keycloak.v2, which puts pf-v5-theme-dark on <html>
-  when the system asks for it.
+  The portal's look on Keycloak's login pages (base-next-js, ADR 0024: the
+  university's Perseids design system). Colours are the portal's tokens
+  (base-next-js brand/theme.css, which takes them from Perseids), in light
+  and dark mode; keep them in step. Dark mode follows keycloak.v2, which puts
+  pf-v5-theme-dark on <html> when the system asks for it.
 */
 
-/* Bricolage Grotesque, the portal's font, Latin subset (SIL Open Font
-   License 1.1, see ../fonts/OFL.txt). Served from here, not Google. */
+/* Bricolage Grotesque, the font the portal uses until the university's
+   Apercu is added. Latin subset (SIL Open Font License 1.1, see
+   ../fonts/OFL.txt). Served from here, not Google. */
 @font-face {
   font-family: "Bricolage Grotesque";
   src: url("../fonts/bricolage-grotesque-latin.woff2") format("woff2");
@@ -17,19 +19,33 @@
 }
 
 :root {
-  --rs-background: #f7f2f8;
-  --rs-foreground: #2e1a33;
-  --rs-surface: #ece2ee;
-  --rs-muted: #654c6c;
-  --rs-accent: #8a4a99;
+  --rs-background: #f5f5f5; /* Perseids grey-100 */
+  --rs-surface: #ffffff;
+  --rs-foreground: #262626; /* grey-800 */
+  --rs-muted: #424242; /* grey-700 */
+  --rs-accent: #ce3d20; /* accessible ochre */
+  --rs-on-accent: #ffffff;
+  --rs-link: #00628c; /* blue-800 */
+  --rs-focus: #007eb5; /* blue-700 */
+  --rs-hover: rgb(0 0 0 / 0.07);
+  --rs-ring: rgb(0 0 0 / 0.06);
+  --rs-shadow: rgb(0 0 0 / 0.08);
+  --rs-control-border: rgb(0 0 0 / 0.15);
 }
 
 :root.pf-v5-theme-dark {
-  --rs-background: #643e6c;
-  --rs-foreground: #f8f3f3;
-  --rs-surface: #57355e;
-  --rs-muted: #dcc4e0;
-  --rs-accent: #ffd479;
+  --rs-background: #121212; /* grey-950 */
+  --rs-surface: #1f1f1f; /* grey-900 */
+  --rs-foreground: #f5f5f5;
+  --rs-muted: #d9d9d9; /* grey-300 */
+  --rs-accent: #e64626; /* ochre */
+  --rs-on-accent: #121212;
+  --rs-link: #33c1ff; /* blue-400 */
+  --rs-focus: #00a2e8; /* blue-600 */
+  --rs-hover: rgb(255 255 255 / 0.1);
+  --rs-ring: rgb(255 255 255 / 0.08);
+  --rs-shadow: rgb(0 0 0 / 0.5);
+  --rs-control-border: rgb(255 255 255 / 0.18);
 }
 
 /* The tokens onto PatternFly and keycloak.v2's own variables. */
@@ -41,31 +57,42 @@
   --pf-v5-global--BackgroundColor--200: var(--rs-background);
   --pf-v5-global--Color--100: var(--rs-foreground);
   --pf-v5-global--Color--200: var(--rs-muted);
-  --pf-v5-global--BorderColor--100: var(--rs-muted);
+  --pf-v5-global--BorderColor--100: var(--rs-control-border);
   --pf-v5-global--BorderColor--200: var(--rs-foreground);
-  --pf-v5-global--link--Color: var(--rs-foreground);
-  --pf-v5-global--link--Color--hover: var(--rs-accent);
-  --pf-v5-global--primary-color--100: var(--rs-foreground);
+  --pf-v5-global--link--Color: var(--rs-link);
+  --pf-v5-global--link--Color--hover: var(--rs-link);
+  --pf-v5-global--primary-color--100: var(--rs-accent);
   --pf-v5-global--primary-color--200: var(--rs-accent);
   --keycloak-bg-logo-url: none;
   --keycloak-card-top-color: transparent;
 }
 
 /* Page: the portal's plain background, not Keycloak's backdrop. */
-.login-pf body {
+.login-pf body,
+#keycloak-bg {
   background: var(--rs-background);
   color: var(--rs-foreground);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Header: the University logo beside "Research Services", like the portal's
-   brand bar. In dark mode the logo sits on a white backing, as in the portal. */
+.pf-v5-c-login__container {
+  max-width: 28rem;
+  padding-block: 4rem 3rem;
+}
+
+/* Header: the University logo beside "Research Services", as in the
+   portal's brand bar. In dark mode the logo sits on a white backing. */
+#kc-header {
+  margin-bottom: 1.5rem;
+}
+
 #kc-header-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  font-size: 1.5rem;
-  font-weight: 600;
+  gap: 1rem;
+  font-size: 1.125rem;
+  font-weight: 500;
   letter-spacing: -0.01em;
   text-transform: none;
   color: var(--rs-foreground) !important;
@@ -76,35 +103,60 @@
   flex: none;
   width: 85px;
   height: 30px;
-  background: url("../img/logo.png") no-repeat center / contain;
+  padding-right: 1rem;
+  border-right: 1px solid var(--rs-control-border);
+  background: url("../img/logo.png") no-repeat left center / 85px 30px;
+  box-sizing: content-box;
 }
 
 :root.pf-v5-theme-dark #kc-header-wrapper::before {
   background-color: #ffffff;
   background-origin: content-box;
+  background-position: center;
   padding: 0.25rem;
+  margin-right: 0.75rem;
+  border-right: 0;
   border-radius: 0.375rem;
 }
 
-/* Card: like the portal's sign-in panel. */
+/* Card: the portal's panel, raised by a faint outline and a soft shadow
+   rather than a border. */
 .pf-v5-c-login__main {
   background-color: var(--rs-surface);
   border-radius: 1rem;
-  box-shadow: none;
+  box-shadow:
+    0 0 0 1px var(--rs-ring),
+    0 1px 2px var(--rs-shadow),
+    0 12px 32px -12px var(--rs-shadow);
+  padding-block: 0.5rem 0.75rem;
 }
 
 .pf-v5-c-login__main-header {
   border-top: 0;
+  padding-top: 1.75rem;
+}
+
+/* The heading: larger and tighter, like the portal's page titles. */
+#kc-page-title {
+  font-size: 1.75rem;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.025em;
 }
 
 #rs-login-intro {
-  font-size: 1.125rem;
+  font-size: 1rem;
   line-height: 1.5;
-  margin-bottom: 1.25rem;
+  color: var(--rs-muted);
+  margin-bottom: 0.5rem;
 }
 
 /* Phones: keep a gutter round the card, as the portal does. */
 @media (max-width: 575px) {
+  .pf-v5-c-login__container {
+    padding-block: 2rem;
+  }
+
   .pf-v5-c-login__main {
     margin-inline: 1rem;
   }
@@ -115,31 +167,50 @@
   display: none;
 }
 
-/* Provider buttons: the portal's secondary button. */
-#kc-social-providers .pf-v5-c-button.pf-m-tertiary {
-  --pf-v5-c-button--m-tertiary--BackgroundColor: var(--rs-background);
-  --pf-v5-c-button--m-tertiary--Color: var(--rs-foreground);
-  --pf-v5-c-button--m-tertiary--hover--BackgroundColor: var(--rs-background);
-  --pf-v5-c-button--m-tertiary--hover--Color: var(--rs-foreground);
-  --pf-v5-c-button--m-tertiary--after--BorderColor: var(--rs-muted);
-  --pf-v5-c-button--m-tertiary--hover--after--BorderColor: var(--rs-foreground);
-  --pf-v5-c-button--m-tertiary--hover--after--BorderWidth: 2px;
-  --pf-v5-c-button--BorderRadius: 0.75rem;
-  --pf-v5-c-button--after--BorderRadius: 0.75rem;
-  font-weight: 600;
-  padding-block: 0.75rem;
+/* Provider buttons: full-width rows, one per way of signing in, with a
+   clear hover. */
+#kc-social-providers ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
 }
 
-/* Main actions on other pages (for example sign-out confirmation): the
-   portal's primary button. */
+#kc-social-providers .pf-v5-c-button {
+  --pf-v5-c-button--m-tertiary--BackgroundColor: var(--rs-surface);
+  --pf-v5-c-button--m-tertiary--Color: var(--rs-foreground);
+  --pf-v5-c-button--m-tertiary--hover--BackgroundColor: var(--rs-hover);
+  --pf-v5-c-button--m-tertiary--hover--Color: var(--rs-foreground);
+  --pf-v5-c-button--m-tertiary--focus--BackgroundColor: var(--rs-hover);
+  --pf-v5-c-button--m-tertiary--active--BackgroundColor: var(--rs-hover);
+  --pf-v5-c-button--m-tertiary--after--BorderColor: var(--rs-control-border);
+  --pf-v5-c-button--m-tertiary--hover--after--BorderColor: var(--rs-control-border);
+  --pf-v5-c-button--m-tertiary--hover--after--BorderWidth: 1px;
+  --pf-v5-c-button--BorderRadius: 999px;
+  --pf-v5-c-button--after--BorderRadius: 999px;
+  justify-content: center;
+  gap: 0.625rem;
+  min-height: 3rem;
+  font-weight: 500;
+  font-size: 1rem;
+  transition: background-color 120ms ease;
+}
+
+/* Main actions on other pages (for example the sign-out confirmation): the
+   portal's primary button, in ochre. */
 .pf-v5-c-button.pf-m-primary {
-  --pf-v5-c-button--m-primary--BackgroundColor: var(--rs-foreground);
-  --pf-v5-c-button--m-primary--Color: var(--rs-background);
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--rs-accent);
+  --pf-v5-c-button--m-primary--Color: var(--rs-on-accent);
   --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--rs-accent);
-  --pf-v5-c-button--m-primary--hover--Color: var(--rs-background);
+  --pf-v5-c-button--m-primary--hover--Color: var(--rs-on-accent);
   --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--rs-accent);
-  --pf-v5-c-button--m-primary--focus--Color: var(--rs-background);
-  --pf-v5-c-button--BorderRadius: 0.75rem;
+  --pf-v5-c-button--m-primary--focus--Color: var(--rs-on-accent);
+  --pf-v5-c-button--BorderRadius: 999px;
+  min-height: 2.75rem;
+  font-weight: 500;
+}
+
+.pf-v5-c-button.pf-m-primary:hover {
+  filter: brightness(0.92);
 }
 
 /* The portal's focus ring. */
@@ -147,6 +218,6 @@
 .login-pf button:focus-visible,
 .login-pf input:focus-visible,
 .login-pf select:focus-visible {
-  outline: 2px solid var(--rs-accent);
+  outline: 2px solid var(--rs-focus);
   outline-offset: 3px;
 }
