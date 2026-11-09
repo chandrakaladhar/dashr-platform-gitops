@@ -99,7 +99,8 @@ spec:
             - --addr=:8181                   # OPA 1.x listens on localhost by default
             - --log-level=info
             - --config-file=/config/config.yaml
-            - --bundle=/bundles/dashr-nova/bundle.tar.gz   # roots: dashr/authz
+            - --bundle                       # a switch: the paths below load as bundles
+            - /bundles/dashr-nova/bundle.tar.gz   # roots: dashr/authz
           ports:
             - name: http
               containerPort: 8181
