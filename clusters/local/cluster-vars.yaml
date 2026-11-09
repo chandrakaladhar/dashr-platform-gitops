@@ -22,6 +22,9 @@ data:
   # OPA policy bundles (OCI), one per application policy repo. OPA loads them
   # once per pod and does not poll: bump the reference here to roll out a change.
   opa_bundle_dashr_nova: ghcr.io/chandrakaladhar/dashr-nova-policies:sha-054796f  # a main commit of dashr-nova-policies
+  # Keycloak with the research id provider, built and loaded by
+  # keycloak-research-id-provider/scripts/build-local.sh (never pulled)
+  keycloak_image: registry.local/dashr/keycloak-research:26.8.1-0.1.0-3928aed
   keycloak_url: http://localhost:8080               # public URL (issuer base). localhost, not keycloak.<domain>:
                                                     # Google only accepts plain-HTTP redirect URIs on localhost.
                                                     # Served on gateway port 8080 (patches in infrastructure.yaml, platform.yaml)

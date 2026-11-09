@@ -1,8 +1,11 @@
 # Keycloak (identity provider, OIDC) on the shared Postgres.
 #
-# Plain manifests on the upstream image (quay.io/keycloak/keycloak), like OPA:
-# no third-party chart to track. Keycloak creates and migrates its own schema
-# in database "keycloak" on startup.
+# Plain manifests, like OPA: no third-party chart to track. The image is
+# ${keycloak_image} (cluster-vars): the upstream quay.io/keycloak/keycloak, or
+# a build of it from keycloak-research-id-provider that adds the research id
+# provider (same Keycloak version). Keycloak creates and migrates its own
+# schema in database "keycloak" on startup, including the provider's
+# RESEARCH_ID_RESERVATION table.
 #
 # Credentials (synced by platform/secrets/base/keycloak.yaml):
 #   keycloak-db     database role, same OpenBao/AWS entry CNPG uses
@@ -54,7 +57,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.8.1
+          image: ${keycloak_image}
           args:
             - start   # production mode; builds its config on first start (about a minute)
           env:
