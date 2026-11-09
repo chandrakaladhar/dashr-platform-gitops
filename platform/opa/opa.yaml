@@ -2,9 +2,17 @@
 # infrastructure/, is separate and only handles Kubernetes admission).
 #
 # Policies are not stored here. Each application publishes an OPA bundle from
-# its own policy repo to an OCI registry; OPA polls for new versions and
-# activates them without a restart. Which bundle each cluster runs is set in
-# clusters/<env>/cluster-vars.yaml.
+# its own policy repo to an OCI registry. Which bundle each cluster runs is set
+# in clusters/<env>/cluster-vars.yaml, and only there: OPA does not poll the
+# registry. An init container pulls the referenced bundle once, OPA loads it
+# from that file, and changing the reference rolls the pod (see the annotation
+# below), so Flux decides when a new policy goes live. Reference immutable tags
+# (sha-<commit> or a release version): a moving tag like :main is only read
+# when a pod starts.
+#
+# Loading a local file also means OPA keeps no download cache. Its OCI cache
+# (/tmp/opa/oci) rewrites index.json non-atomically on every poll, and a kill
+# mid-write left an empty file that OPA panicked on at every restart.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,19 +20,8 @@ metadata:
   namespace: policy
 data:
   config.yaml: |
-    services:
-      registry:
-        url: ${opa_bundle_registry}
-        type: oci
-    bundles:
-      # dashr-nova-policies, roots: dashr
-      dashr-nova:
-        service: registry
-        resource: ${opa_bundle_dashr_nova}
-        polling:
-          min_delay_seconds: 30
-          max_delay_seconds: 60
-    # Which bundle revision is active, at /v1/status and in the pod log
+    # No services or bundles: policies come from --bundle files (see the Deployment).
+    # Which bundle revision is active, in the pod log
     status:
       console: true
     # One log line per decision, with its input and the bundle revision
@@ -38,6 +35,11 @@ metadata:
   namespace: policy
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0                  # the old pod serves until the new bundle has loaded
   selector:
     matchLabels:
       app: opa
@@ -46,14 +48,48 @@ spec:
       labels:
         app: opa
       annotations:
-        # OPA reads its config once; changing a bundle reference rolls the pods
-        dashr.local/bundles: "${opa_bundle_registry} ${opa_bundle_dashr_nova}"
+        # OPA reads its bundles once; changing a bundle reference rolls the pods
+        dashr.local/bundles: "${opa_bundle_dashr_nova}"
     spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        # Pulls each bundle (the OCI layer titled bundle.tar.gz) into /bundles.
+        # Runs again whenever the pod is recreated and overwrites what is there.
+        - name: fetch-bundles
+          image: ghcr.io/oras-project/oras:v1.3.6
+          args:
+            - pull
+            - ${opa_bundle_dashr_nova}
+            - --output=/bundles/dashr-nova
+            - --no-tty
+          env:
+            # Extra CA certificates, added to the system roots. Locally this is
+            # the TLS-inspecting proxy CA (Secret corp-ca, from local-up.sh);
+            # elsewhere the Secret is absent and the directory is empty.
+            - name: SSL_CERT_DIR
+              value: /etc/ssl/certs:/etc/corp-ca
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+              ephemeral-storage: 16Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: bundles
+              mountPath: /bundles
+            - name: corp-ca
+              mountPath: /etc/corp-ca
+              readOnly: true
       containers:
         - name: opa
           image: openpolicyagent/opa:1.4.2   # TODO: pin to a current release (and OPA_VERSION in policy repo CI)
@@ -63,18 +99,13 @@ spec:
             - --addr=:8181                   # OPA 1.x listens on localhost by default
             - --log-level=info
             - --config-file=/config/config.yaml
-          env:
-            # Extra CA certificates, added to the system roots. Locally this is
-            # the TLS-inspecting proxy CA (Secret corp-ca, from local-up.sh);
-            # elsewhere the Secret is absent and the directory is empty.
-            - name: SSL_CERT_DIR
-              value: /etc/ssl/certs:/etc/corp-ca
+            - --bundle=/bundles/dashr-nova/bundle.tar.gz   # roots: dashr/authz
           ports:
             - name: http
               containerPort: 8181
           readinessProbe:
             httpGet:
-              path: /health?bundles          # not ready until every bundle has been activated once
+              path: /health                  # bundles are loaded before the server starts
               port: http
           livenessProbe:
             httpGet:
@@ -95,11 +126,9 @@ spec:
             - name: config
               mountPath: /config
               readOnly: true
-            - name: corp-ca
-              mountPath: /etc/corp-ca
+            - name: bundles
+              mountPath: /bundles
               readOnly: true
-            - name: tmp                      # OCI downloads are staged here
-              mountPath: /tmp
       volumes:
         - name: config
           configMap:
@@ -108,8 +137,9 @@ spec:
           secret:
             secretName: corp-ca
             optional: true
-        - name: tmp
-          emptyDir: {}
+        - name: bundles
+          emptyDir:
+            sizeLimit: 16Mi
 ---
 apiVersion: v1
 kind: Service
