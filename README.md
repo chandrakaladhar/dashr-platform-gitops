@@ -456,21 +456,23 @@ waiting on a dependency is normal; find the first one that is not.
   or untagged. Locally they `warn`; in production they `deny`.
 - OPA policies live outside this repo. Each application publishes an OPA
   bundle from its own policy repo (dashr-nova: `dashr-nova-policies`, roots
-  `dashr`) to GHCR, and `platform/opa/opa.yaml` lists the bundles. The
-  reference per cluster is in `cluster-vars.yaml`: local follows `:main`,
-  production pins a released version, so promoting a policy is a one-line
-  change there. OPA polls every 30-60s and activates new bundle versions
-  without restarting; it is not Ready until every bundle has loaded once
-  (`/health?bundles`), and keeps the last good bundle if a download fails.
-  `curl localhost:8181/v1/status` (after a port-forward) shows the active
-  revision of each bundle, and the pod log has one line per decision.
+  `dashr/authz`) to GHCR. The reference per cluster is in `cluster-vars.yaml`
+  and Git is the only trigger: OPA does not poll the registry. An init
+  container (`oras pull`) fetches each bundle when the pod starts, OPA loads
+  it with `--bundle`, and changing a reference rolls the pod, so promoting a
+  policy is a one-line change there that Flux applies. Use immutable tags:
+  local pins a `sha-<commit>` from main, production a released version. The
+  old pod keeps serving until the new one has loaded its bundle; a missing or
+  invalid bundle leaves the new pod in `Init` or not Ready instead. The pod
+  log has one line per decision, with the bundle revision.
 - To onboard another application's policies: publish its bundle with roots
-  that don't overlap existing ones (OPA refuses overlapping roots), add a
-  `bundles:` entry in `platform/opa/opa.yaml` and its reference to each
-  `cluster-vars.yaml`.
+  that don't overlap existing ones (OPA refuses overlapping roots), and in
+  `platform/opa/opa.yaml` add an init container that pulls it, a `--bundle`
+  argument and the reference to the `dashr.local/bundles` annotation; then add
+  the reference to each `cluster-vars.yaml`.
 - The bundle packages must be readable by the cluster: make the GHCR package
-  public, or add `credentials` to the `registry` service in OPA's config,
-  backed by a Secret.
+  public, or give the init container registry credentials (a
+  `dockerconfigjson` Secret passed with `--registry-config`).
 - `database`, `temporal`, `policy` and `openbao` are outside the mesh. Access
   to Postgres and OpenBao is restricted by NetworkPolicies, which only take
   effect if your CNI enforces them.
