@@ -42,6 +42,57 @@ spec:
                 - { name: http2, port: 80, targetPort: 80, protocol: TCP }
                 - { name: https, port: 443, targetPort: 443, protocol: TCP }
                 - { name: http-keycloak, port: 8080, targetPort: 8080, protocol: TCP }
+    # Local only: sized for one developer machine, no high availability.
+    # The charts' defaults are for production (istiod reserves 2Gi, Gatekeeper
+    # runs 3 controller replicas at 512Mi), and Kubernetes schedules by what a
+    # pod reserves, not what it uses. Production keeps the defaults.
+    #
+    # istiod: one replica, no autoscaler, a smaller reservation. Upgrades stop
+    # the old pod before starting the new one (maxSurge 0), so an upgrade never
+    # needs room for two; the mesh keeps running from the sidecars' config
+    # meanwhile. Sidecars reserve 64Mi instead of 128Mi (limits unchanged).
+    - target:
+        kind: HelmRelease
+        name: istiod
+      patch: |
+        - op: add
+          path: /spec/values/pilot/autoscaleEnabled
+          value: false
+        - op: add
+          path: /spec/values/pilot/replicaCount
+          value: 1
+        - op: add
+          path: /spec/values/pilot/rollingMaxSurge
+          value: 0
+        - op: add
+          path: /spec/values/pilot/rollingMaxUnavailable
+          value: 1
+        - op: add
+          path: /spec/values/pilot/resources
+          value:
+            requests: { cpu: 100m, memory: 256Mi }
+        - op: add
+          path: /spec/values/global
+          value:
+            proxy:
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+    # Gatekeeper: one controller replica instead of three; 256Mi reserved for
+    # the controller and audit pods instead of 512Mi (512Mi limits kept).
+    - target:
+        kind: HelmRelease
+        name: gatekeeper
+      patch: |
+        - op: add
+          path: /spec/values
+          value:
+            replicas: 1
+            controllerManager:
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+            audit:
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
