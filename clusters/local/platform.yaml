@@ -154,8 +154,8 @@ spec:
       - kind: ConfigMap
         name: cluster-vars
   patches:
-    # Local only: Keycloak at http://localhost:8080 (keycloak_url). Any host
-    # on gateway port 8080 goes to Keycloak; nothing else answers on 8080.
+    # Local only: Keycloak at https://localhost:8443 (keycloak_url). Any host
+    # on gateway port 8443 goes to Keycloak; nothing else answers on 8443.
     # keycloak.<domain> on port 80 is no longer routed.
     - target:
         kind: VirtualService
@@ -168,15 +168,16 @@ spec:
           path: /spec/http
           value:
             - match:
-                - port: 8080
+                - port: 8443
               # Istio forwards X-Forwarded-Proto without a port, so Keycloak
-              # assumed port 80 for its back-channel URLs (token endpoint
-              # http://localhost/...). Set, not appended: overrides any value
-              # a client sends.
+              # would assume port 443 for its back-channel URLs (token
+              # endpoint https://localhost/...). Set, not appended: overrides
+              # any value a client sends.
               headers:
                 request:
                   set:
-                    X-Forwarded-Port: "8080"
+                    X-Forwarded-Proto: https
+                    X-Forwarded-Port: "8443"
               route:
                 - destination:
                     host: keycloak.keycloak.svc.cluster.local

@@ -173,6 +173,13 @@ recreate flux-system corp-ca     --from-file=ca.crt="$CA_BUNDLE"
 recreate dashr-nova  corp-ca     --from-file=ca.crt="$CA_BUNDLE" ${GIT_AUTH[@]+"${GIT_AUTH[@]}"}
 # OPA pulls policy bundles from an OCI registry (platform/opa/opa.yaml)
 recreate policy      corp-ca     --from-file=ca.crt="$CA_BUNDLE"
+# Keycloak's HTTPS certificate on gateway port 8443 (scripts/local-tls.sh)
+if command -v mkcert >/dev/null; then
+  KUBE_CONTEXT="$CTX" "$ROOT/scripts/local-tls.sh"
+else
+  echo "warning: mkcert not found, so https://localhost:8443 (Keycloak) has no certificate." >&2
+  echo "         brew install mkcert, then ./scripts/local-tls.sh" >&2
+fi
 
 # --- sync ----------------------------------------------------------------------
 step "Sync $REPO_URL @ $BRANCH, path clusters/local"
@@ -300,7 +307,7 @@ cat <<EOF
 
 Local cluster is up, following $BRANCH.
   App:       http://dashr-nova.dashr.local (via the gateway; needs 127.0.0.1 dashr-nova.dashr.local in /etc/hosts)
-  Keycloak:  http://localhost:8080/admin  (user admin; password: bao kv get -field=password kv/keycloak/admin)
+  Keycloak:  https://localhost:8443/admin  (user admin; password: bao kv get -field=password kv/keycloak/admin)
   Status:    flux --context $CTX get kustomizations -A
   New build: bump image.tag in dashr-nova-deploy/overlays/local/helmrelease-patch.yaml, push, re-run
   OpenBao:   unseal key and root token in $INIT_FILE

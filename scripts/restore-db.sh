@@ -94,6 +94,6 @@ start_keycloak
 trap - EXIT
 echo "Done."
 case " $DATABASES " in *" keycloak "*)
-  echo "Keycloak restarts in about a minute. Admin console: http://localhost:8080/admin,"
+  echo "Keycloak restarts in about a minute. Admin console: https://localhost:8443/admin,"
   echo "with the admin password of the cluster the backup came from." ;;
 esac

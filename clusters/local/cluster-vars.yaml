@@ -25,9 +25,10 @@ data:
   # Keycloak with the research id provider, built and loaded by
   # keycloak-research-id-provider/scripts/build-local.sh (never pulled)
   keycloak_image: registry.local/dashr/keycloak-research:26.8.1-0.1.0-3928aed
-  keycloak_url: http://localhost:8080               # public URL (issuer base). localhost, not keycloak.<domain>:
-                                                    # Google only accepts plain-HTTP redirect URIs on localhost.
-                                                    # Served on gateway port 8080 (patches in infrastructure.yaml, platform.yaml)
+  keycloak_url: https://localhost:8443              # public URL (issuer base). localhost, not keycloak.<domain>:
+                                                    # Google only accepts redirect URIs on real domains or localhost.
+                                                    # HTTPS on gateway port 8443 with an mkcert certificate
+                                                    # (scripts/local-tls.sh; patches in infrastructure.yaml, platform.yaml)
   # Secrets manager (in-cluster for local work)
   openbao_addr: http://openbao.openbao.svc.cluster.local:8200
   openbao_auth_mount: kubernetes
