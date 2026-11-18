@@ -385,11 +385,14 @@ schema in the `keycloak` database on first start.
   stores it as Secret `istio-ingress/localhost-tls`, which TLS on port 8443
   uses. `local-up.sh` runs it when mkcert is installed; re-run it on its own
   after a cluster wipe or when the certificate nears expiry (about two years).
-  Browsers trust it through the keychain. Node doesn't read the keychain by
-  default: start Node apps that call Keycloak (the portal's `next dev`, its
-  Playwright tests) with `NODE_OPTIONS=--use-system-ca`, or point
-  `NODE_EXTRA_CA_CERTS` at `$(mkcert -CAROOT)/rootCA.pem`. Pods are unaffected:
-  they call Keycloak inside the cluster over plain HTTP.
+  Browsers trust it through the keychain. Node doesn't, not even with
+  `--use-system-ca`: Node apps that call Keycloak (the portal's `next dev`, its
+  Playwright tests) need `export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"`
+  in the shell. Pods are unaffected: they call Keycloak inside the cluster over
+  plain HTTP.
+- **After adding or changing a LoadBalancer port** (or a Docker Desktop
+  restart), Docker Desktop may keep publishing the old ports on localhost
+  until `kind-cloud-provider` restarts: `docker restart kind-cloud-provider`.
   Pods don't use that URL: with `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, a tenant
   that reads discovery from
   `http://keycloak.keycloak.svc.cluster.local:8080/realms/<realm>/.well-known/openid-configuration`
