@@ -36,7 +36,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 mkcert -cert-file "$WORK/tls.crt" -key-file "$WORK/tls.key" localhost 127.0.0.1 ::1 >/dev/null 2>&1
 
-k create namespace "$NS" --dry-run=client -o yaml | k apply -f - >/dev/null
+# Flux owns the namespace once the cluster is synced; only create it if missing.
+k get namespace "$NS" >/dev/null 2>&1 || k create namespace "$NS" >/dev/null
 k -n "$NS" create secret tls "$SECRET" --cert="$WORK/tls.crt" --key="$WORK/tls.key" \
   --dry-run=client -o yaml | k apply -f - >/dev/null
 echo "    $NS/$SECRET (localhost, 127.0.0.1, ::1; CA $(mkcert -CAROOT)/rootCA.pem)"
