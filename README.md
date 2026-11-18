@@ -29,7 +29,8 @@ platform/
                            (policies come from each app's policy repo as OCI bundles)
   harbor/                  prepared, not enabled yet
 tenants/dashr-nova/        deploy service account, platform values, Git source, Flux sync
-scripts/                   configure-openbao.sh, seed-secrets.sh, unseal.sh (local)
+scripts/                   configure-openbao.sh, seed-secrets.sh, unseal.sh,
+                           fix-local-lb.sh (local)
                            seed-secrets-aws.sh (production)
 ```
 
@@ -165,6 +166,12 @@ root again, use `bao operator generate-root` with the unseal key.
 **After any restart** of the OpenBao pod or its node, run `./scripts/unseal.sh`.
 Syncs pause while it is sealed; existing Kubernetes Secrets keep working.
 
+**After Docker Desktop restarts**, if pods are Running but `localhost:8443`
+(Keycloak) or `localhost:80` gives "Empty reply from server", run
+`./scripts/fix-local-lb.sh`. The node may have come back on a new IP while
+cloud-provider-kind's load balancers still forward to the old one; the script
+detects that and restarts `kind-cloud-provider` so it rewrites them.
+
 **Backups:** `bao operator raft snapshot save openbao-$(date +%F).snap`
 (`*.snap` is git-ignored). Test a restore at least once.
 
@@ -183,7 +190,7 @@ Everything is `ClusterIP`; reach it with a port-forward (one per terminal).
 |---|---|---|
 | dashr-nova (via Istio) | add `127.0.0.1 dashr-nova.dashr.local` to `/etc/hosts` | http://dashr-nova.dashr.local |
 | dashr-nova (direct) | `kubectl -n dashr-nova port-forward svc/dashr-nova 8080:80` | http://localhost:8080 |
-| Keycloak (via Istio, port 8080) | nothing: Docker Desktop publishes the gateway's port 8080 on localhost | http://localhost:8080/admin, user `admin`, password: `bao kv get -field=password kv/keycloak/admin` |
+| Keycloak (via Istio, port 8443) | nothing: Docker Desktop publishes the gateway's port 8443 on localhost (certificate: `./scripts/local-tls.sh`) | https://localhost:8443/admin, user `admin`, password: `bao kv get -field=password kv/keycloak/admin` |
 | Temporal UI | `kubectl -n temporal port-forward svc/temporal-web 8088:8080` | http://localhost:8088, namespace `default` |
 | Temporal frontend (gRPC) | `kubectl -n temporal port-forward svc/temporal-frontend 7233:7233` | `temporal workflow list --address localhost:7233` |
 | OpenBao (CLI and UI) | `kubectl -n openbao port-forward svc/openbao 8200:8200` | http://localhost:8200/ui |
@@ -364,14 +371,25 @@ schema in the `keycloak` database on first start.
 - **Realms and clients are not in Git yet.** Create them in the admin console
   for now; when they settle, manage them as code (keycloak-config-cli or the
   Keycloak Terraform provider) so a rebuilt cluster gets them back.
-- **Locally, Keycloak is at `http://localhost:8080`**, not `keycloak.dashr.local`:
-  Google (like most social identity providers) only accepts plain-HTTP
-  redirect URIs on `localhost`. Three local-only patches in `clusters/local/`
+- **Locally, Keycloak is at `https://localhost:8443`**, not `keycloak.dashr.local`:
+  Google (like most social identity providers) only accepts redirect URIs on
+  a public domain or `localhost`. Three local-only patches in `clusters/local/`
   serve it there: an extra port on the ingress gateway Service
-  (`infrastructure.yaml`, `infra-controllers`), a listener on that port on
-  `main-gateway` (`infra-configs`; Istio rejects `localhost` as a Gateway host,
-  so it accepts any host), and the Keycloak VirtualService matching port 8080
-  (`platform.yaml`). The admin console is at `http://localhost:8080/admin`.
+  (`infrastructure.yaml`, `infra-controllers`), an HTTPS listener on that port
+  on `main-gateway` (`infra-configs`; Istio rejects `localhost` as a Gateway
+  host, so it accepts any host), and the Keycloak VirtualService matching port
+  8443 (`platform.yaml`). The admin console is at `https://localhost:8443/admin`.
+- **The local certificate** comes from [mkcert](https://github.com/FiloSottile/mkcert)
+  (`brew install mkcert`): `./scripts/local-tls.sh` trusts mkcert's CA on this
+  Mac (asks for your password once), issues a certificate for `localhost` and
+  stores it as Secret `istio-ingress/localhost-tls`, which TLS on port 8443
+  uses. `local-up.sh` runs it when mkcert is installed; re-run it on its own
+  after a cluster wipe or when the certificate nears expiry (about two years).
+  Browsers trust it through the keychain. Node doesn't read the keychain by
+  default: start Node apps that call Keycloak (the portal's `next dev`, its
+  Playwright tests) with `NODE_OPTIONS=--use-system-ca`, or point
+  `NODE_EXTRA_CA_CERTS` at `$(mkcert -CAROOT)/rootCA.pem`. Pods are unaffected:
+  they call Keycloak inside the cluster over plain HTTP.
   Pods don't use that URL: with `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, a tenant
   that reads discovery from
   `http://keycloak.keycloak.svc.cluster.local:8080/realms/<realm>/.well-known/openid-configuration`

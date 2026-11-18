@@ -26,7 +26,7 @@ spec:
           path: /spec/certSecretRef
           value:
             name: corp-ca
-    # Local only: Keycloak on localhost:8080 (keycloak_url in cluster-vars).
+    # Local only: Keycloak on https://localhost:8443 (keycloak_url in cluster-vars).
     # Docker Desktop publishes LoadBalancer ports on localhost. Setting
     # service.ports replaces the chart's list, so its three defaults are kept.
     - target:
@@ -41,7 +41,7 @@ spec:
                 - { name: status-port, port: 15021, targetPort: 15021, protocol: TCP }
                 - { name: http2, port: 80, targetPort: 80, protocol: TCP }
                 - { name: https, port: 443, targetPort: 443, protocol: TCP }
-                - { name: http-keycloak, port: 8080, targetPort: 8080, protocol: TCP }
+                - { name: https-keycloak, port: 8443, targetPort: 8443, protocol: TCP }
     # Local only: sized for one developer machine, no high availability.
     # The charts' defaults are for production (istiod reserves 2Gi, Gatekeeper
     # runs 3 controller replicas at 512Mi), and Kubernetes schedules by what a
@@ -116,10 +116,12 @@ spec:
       - kind: ConfigMap
         name: cluster-vars
   patches:
-    # Local only: a listener on 8080 for Keycloak at http://localhost:8080.
+    # Local only: an HTTPS listener on 8443 for Keycloak at
+    # https://localhost:8443. TLS ends here, with the mkcert certificate in
+    # Secret istio-ingress/localhost-tls (scripts/local-tls.sh, not in Git).
     # Istio rejects "localhost" as a Gateway host (not an FQDN), so this
     # server accepts any host; the Keycloak VirtualService is the only route
-    # on port 8080 (it matches on the port).
+    # on port 8443 (it matches on the port).
     - target:
         kind: Gateway
         name: main-gateway
@@ -127,7 +129,8 @@ spec:
         - op: add
           path: /spec/servers/-
           value:
-            port: { number: 8080, name: http-keycloak, protocol: HTTP }
+            port: { number: 8443, name: https-keycloak, protocol: HTTPS }
+            tls: { mode: SIMPLE, credentialName: localhost-tls }
             hosts: ["*"]
 ---
 # Constraints need the CRDs that Gatekeeper creates from the templates in
